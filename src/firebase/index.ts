@@ -27,5 +27,4 @@ export { app, db, auth };
 
 // Export hooks and providers
 export { FirebaseProvider, useFirebase, useFirebaseApp, useFirestore, useAuth } from './provider';
-export { useUser } from './auth/use-user';
 export { useCollection } from './firestore/use-collection';

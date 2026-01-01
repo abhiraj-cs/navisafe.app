@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -31,8 +30,8 @@ import {
   MapPin,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useCollection, useUser } from '@/firebase';
-import { ThemeToggle } from './theme-toggle';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { collection, addDoc } from 'firebase/firestore';
 import { BlackSpot } from '@/lib/data';
 import { useFirebase } from '@/firebase';
@@ -120,7 +119,7 @@ export default function NaviSafeApp() {
        toast({
         variant: 'destructive',
         title: 'Failed to Add Spot',
-        description: error.message || 'You may not have permission to perform this action.',
+        description: error.message || 'There was a problem saving the new spot.',
       });
     }
 
