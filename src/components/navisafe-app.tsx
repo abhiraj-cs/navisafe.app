@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Loader2, Map as MapIcon, Search, ShieldAlert, ShieldCheck } from 'lucide-react';
-import type { LatLngExpression } from 'leaflet';
 import { useToast } from '@/hooks/use-toast';
 
 const Map = dynamic(() => import('@/components/map'), {
@@ -15,76 +14,51 @@ const Map = dynamic(() => import('@/components/map'), {
   loading: () => <div className="h-full w-full bg-muted flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 });
 
-type GeoCodedLocation = {
-  lat: number;
-  lon: number;
-  display_name: string;
-};
-
 export default function NaviSafeApp() {
   const [startInput, setStartInput] = useState('');
   const [endInput, setEndInput] = useState('');
-  const [startCoords, setStartCoords] = useState<[number, number] | null>(null);
-  const [endCoords, setEndCoords] = useState<[number, number] | null>(null);
+  const [startLocation, setStartLocation] = useState('');
+  const [endLocation, setEndLocation] = useState('');
   const [safetyBriefing, setSafetyBriefing] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [mapId, setMapId] = useState(Date.now()); // Used to force remount of Map component
+  const [isMapLoading, setMapIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const { toast } = useToast();
 
-  const geocode = async (address: string): Promise<GeoCodedLocation | null> => {
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
-      if (!response.ok) throw new Error('Geocoding service failed');
-      const data = await response.json();
-      if (data.length > 0) {
-        return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), display_name: data[0].display_name };
-      }
-      return null;
-    } catch (err) {
-      console.error('Geocoding error:', err);
-      return null;
-    }
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!startInput || !endInput) {
       setError('Please enter both a start and end location.');
       return;
     }
-
-    setIsLoading(true);
+    
     setError('');
     setSafetyBriefing(null);
-
-    const start = await geocode(startInput);
-    const end = await geocode(endInput);
-
-    if (!start || !end) {
-      setError('Could not find one or both locations. Please try again with more specific addresses.');
-      setIsLoading(false);
-      return;
-    }
-
-    setStartCoords([start.lat, start.lon]);
-    setEndCoords([end.lat, end.lon]);
-    setMapId(Date.now()); // Change key to force remount
-    setIsLoading(false); // Map component will handle its own loading
+    setStartLocation(startInput);
+    setEndLocation(endInput);
   };
   
   const isWarning = safetyBriefing && (safetyBriefing.includes("Caution") || safetyBriefing.includes("passes near"));
+  const isSearching = isLoading || isMapLoading;
 
   return (
     <div className="relative h-screen w-screen font-body">
+      {isSearching && (
+        <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-20">
+          <div className="flex items-center gap-2 text-muted-foreground p-4 bg-background rounded-md shadow-lg">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Analyzing route safety...
+          </div>
+        </div>
+      )}
       <Map
-        key={mapId}
-        startCoords={startCoords}
-        endCoords={endCoords}
+        startLocation={startLocation}
+        endLocation={endLocation}
         onSafetyBriefing={setSafetyBriefing}
         onMapError={(message) => {
             toast({ variant: 'destructive', title: 'Map Error', description: message });
         }}
+        onLoading={setMapIsLoading}
       />
       <div className="absolute top-4 left-4 right-4 md:left-4 md:right-auto md:w-full md:max-w-sm z-10">
         <Card className="shadow-2xl bg-card/90 backdrop-blur-sm">
@@ -101,18 +75,18 @@ export default function NaviSafeApp() {
                   placeholder="Start Location (e.g., 'Waterloo, London')"
                   value={startInput}
                   onChange={(e) => setStartInput(e.target.value)}
-                  disabled={isLoading}
+                  disabled={isSearching}
                 />
                 <Input
                   placeholder="End Location (e.g., 'Canary Wharf, London')"
                   value={endInput}
                   onChange={(e) => setEndInput(e.target.value)}
-                  disabled={isLoading}
+                  disabled={isSearching}
                 />
               </div>
               {error && <p className="text-sm text-destructive px-1">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+              <Button type="submit" className="w-full" disabled={isSearching}>
+                {isSearching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
                 Find Safer Route
               </Button>
             </form>
