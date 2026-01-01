@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Loader2, Map as MapIcon, Search, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const MapComponent = dynamic(() => import('@/components/map'), {
   ssr: false,
-  loading: () => <div className="h-full w-full bg-muted flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+  loading: () => <Skeleton className="h-full w-full" />,
 });
+
 
 export default function NaviSafeApp() {
   const [startInput, setStartInput] = useState('');
