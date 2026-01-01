@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from 'react';
-import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Loader2, Map as MapIcon, Search, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import dynamic from 'next/dynamic';
 
-const Map = dynamic(() => import('@/components/map'), {
+const MapComponent = dynamic(() => import('@/components/map'), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-muted flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 });
@@ -34,12 +34,20 @@ export default function NaviSafeApp() {
     
     setError('');
     setSafetyBriefing(null);
+    setIsLoading(true); // Set loading state for the whole app
     setStartLocation(startInput);
     setEndLocation(endInput);
   };
   
   const isWarning = safetyBriefing && (safetyBriefing.includes("Caution") || safetyBriefing.includes("passes near"));
   const isSearching = isLoading || isMapLoading;
+
+  const handleMapLoading = (loading: boolean) => {
+    setMapIsLoading(loading);
+    if (!loading) {
+      setIsLoading(false); // Turn off main loader when map is done
+    }
+  }
 
   return (
     <div className="relative h-screen w-screen font-body">
@@ -51,14 +59,14 @@ export default function NaviSafeApp() {
           </div>
         </div>
       )}
-      <Map
+      <MapComponent
         startLocation={startLocation}
         endLocation={endLocation}
         onSafetyBriefing={setSafetyBriefing}
         onMapError={(message) => {
             toast({ variant: 'destructive', title: 'Map Error', description: message });
         }}
-        onLoading={setMapIsLoading}
+        onLoading={handleMapLoading}
       />
       <div className="absolute top-4 left-4 right-4 md:left-4 md:right-auto md:w-full md:max-w-sm z-10">
         <Card className="shadow-2xl bg-card/90 backdrop-blur-sm">
