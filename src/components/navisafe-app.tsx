@@ -28,6 +28,7 @@ import {
   Navigation,
   PlusCircle,
   MapPin,
+  Crosshair,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -48,6 +49,7 @@ const MapComponent = dynamic(() => import('@/components/map'), {
 });
 
 type NewSpotInfo = { lat: number; lng: number } | null;
+type CurrentLocation = { lat: number; lng: number } | null;
 
 export default function NaviSafeApp() {
   const { db } = useFirebase();
@@ -57,8 +59,9 @@ export default function NaviSafeApp() {
   
   const [startInput, setStartInput] = useState('Alappuzha');
   const [endInput, setEndInput] = useState('Pathanamthitta');
+  const [currentLocation, setCurrentLocation] = useState<CurrentLocation>(null);
 
-  const [activeRoute, setActiveRoute] = useState({ start: '', end: '' });
+  const [activeRoute, setActiveRoute] = useState<{ start: string | { lat: number, lng: number }, end: string }>({ start: '', end: '' });
 
   const [safetyBriefing, setSafetyBriefing] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -68,11 +71,17 @@ export default function NaviSafeApp() {
   const [newSpotInfo, setNewSpotInfo] = useState<NewSpotInfo>(null);
   const [newSpotRisk, setNewSpotRisk] = useState<'High' | 'Medium'>('Medium');
   const [newSpotDescription, setNewSpotDescription] = useState('');
+  const [locateUser, setLocateUser] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (isAddMode) setIsAddMode(false);
-    if (!startInput.trim() || !endInput.trim()) {
+    
+    let startValue: string | { lat: number, lng: number } = startInput;
+
+    if (startInput === 'My Current Location' && currentLocation) {
+      startValue = currentLocation;
+    } else if (!startInput.trim() || !endInput.trim()) {
       toast({
         variant: 'destructive',
         title: 'Missing Locations',
@@ -82,12 +91,49 @@ export default function NaviSafeApp() {
     }
 
     setSafetyBriefing(null);
-    setActiveRoute({ start: startInput, end: endInput });
+    setActiveRoute({ start: startValue, end: endInput });
   };
 
   const handleMapClick = (latlng: { lat: number; lng: number }) => {
     if (isAddMode) {
       setNewSpotInfo(latlng);
+    }
+  };
+
+  const handleLocateUser = () => {
+    setIsSearching(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const userLocation = { lat: latitude, lng: longitude };
+          setCurrentLocation(userLocation);
+          setStartInput('My Current Location');
+          setLocateUser(true); // Triggers map to locate user
+          setIsSearching(false);
+          toast({
+            title: 'Location Found',
+            description: "Your current location has been set as the starting point.",
+          });
+          // Reset locateUser after a short delay so it can be triggered again
+          setTimeout(() => setLocateUser(false), 500);
+        },
+        (error) => {
+          setIsSearching(false);
+          toast({
+            variant: 'destructive',
+            title: 'Location Error',
+            description: error.message || 'Could not get your current location.',
+          });
+        }
+      );
+    } else {
+      setIsSearching(false);
+      toast({
+        variant: 'destructive',
+        title: 'Geolocation Not Supported',
+        description: 'Your browser does not support geolocation.',
+      });
     }
   };
 
@@ -222,7 +268,7 @@ export default function NaviSafeApp() {
             <CardContent>
               <form onSubmit={handleSearch} className="space-y-4">
                 <div className="space-y-3">
-                  <div className="relative">
+                  <div className="relative flex items-center gap-2">
                     <div className="absolute left-3 top-2.5 h-4 w-4 rounded-full border-2 border-slate-400 dark:border-slate-600" />
                     <Input
                       className="pl-9 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500"
@@ -231,6 +277,17 @@ export default function NaviSafeApp() {
                       onChange={e => setStartInput(e.target.value)}
                       disabled={isSearching}
                     />
+                     <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleLocateUser}
+                        disabled={isSearching}
+                        className="flex-shrink-0"
+                        aria-label="Use my location"
+                      >
+                        <Crosshair className="h-4 w-4 text-blue-500" />
+                      </Button>
                   </div>
 
                   <div className="relative">
@@ -346,6 +403,7 @@ export default function NaviSafeApp() {
             });
           }}
           onLoading={setIsSearching}
+          locateUser={locateUser}
         />
         {isAddMode && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">

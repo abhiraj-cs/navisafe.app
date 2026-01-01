@@ -14,9 +14,10 @@ import { haversineDistance } from '@/lib/utils';
 const COLLISION_THRESHOLD = 500; 
 
 type MapProps = {
-  startLocation: string;
+  startLocation: string | { lat: number; lng: number };
   endLocation: string;
   blackSpots: BlackSpot[];
+  locateUser: boolean;
   onSafetyBriefing: (briefing: string | null) => void;
   onMapError: (message: string) => void;
   onLoading: (loading: boolean) => void;
@@ -27,6 +28,7 @@ const MapComponent = ({
   startLocation, 
   endLocation, 
   blackSpots,
+  locateUser,
   onSafetyBriefing, 
   onMapError,
   onLoading,
@@ -38,6 +40,7 @@ const MapComponent = ({
   const startMarker = useRef<L.Marker | null>(null);
   const endMarker = useRef<L.Marker | null>(null);
   const blackSpotsLayer = useRef<L.LayerGroup | null>(null);
+  const userLocationMarker = useRef<L.Marker | null>(null);
 
   // Initialize map
   useEffect(() => {
@@ -70,6 +73,35 @@ const MapComponent = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Handle locating the user
+  useEffect(() => {
+    if (locateUser && leafletMap.current) {
+      leafletMap.current.locate({ setView: true, maxZoom: 16 });
+
+      const onLocationFound = (e: L.LocationEvent) => {
+        if (userLocationMarker.current) {
+          userLocationMarker.current.setLatLng(e.latlng);
+        } else {
+          userLocationMarker.current = L.marker(e.latlng).addTo(leafletMap.current!)
+            .bindPopup("You are here").openPopup();
+        }
+      }
+
+      const onLocationError = (e: L.ErrorEvent) => {
+        onMapError("GPS location not found.");
+      }
+
+      leafletMap.current.on('locationfound', onLocationFound);
+      leafletMap.current.on('locationerror', onLocationError);
+
+      return () => {
+        leafletMap.current?.off('locationfound', onLocationFound);
+        leafletMap.current?.off('locationerror', onLocationError);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locateUser]);
+
   // Update black spots
   useEffect(() => {
     if (!leafletMap.current || !blackSpotsLayer.current) return;
@@ -97,7 +129,7 @@ const MapComponent = ({
   // Handle route search
   useEffect(() => {
     const fetchRoute = async () => {
-      if (!startLocation || !endLocation || !leafletMap.current) return;
+      if ((!startLocation && typeof startLocation !== 'object') || !endLocation || !leafletMap.current) return;
       
       onLoading(true);
       onSafetyBriefing(null);
@@ -110,7 +142,14 @@ const MapComponent = ({
       
       try {
         const provider = new OpenStreetMapProvider();
-        const startRes = await provider.search({ query: startLocation });
+        
+        let startRes;
+        if (typeof startLocation === 'string') {
+          startRes = await provider.search({ query: startLocation });
+        } else {
+           startRes = [{ x: startLocation.lng, y: startLocation.lat, label: 'My Current Location' }];
+        }
+        
         const endRes = await provider.search({ query: endLocation });
 
         if (!startRes.length || !endRes.length) {
@@ -135,8 +174,8 @@ const MapComponent = ({
         routeLayer.current = L.polyline(coordinates, { color: '#3b82f6', weight: 6 }).addTo(leafletMap.current);
         
         // Add markers
-        startMarker.current = L.marker(sCoords).addTo(leafletMap.current).bindPopup('Start');
-        endMarker.current = L.marker(eCoords).addTo(leafletMap.current).bindPopup('Destination');
+        startMarker.current = L.marker(sCoords).addTo(leafletMap.current).bindPopup(startRes[0].label);
+        endMarker.current = L.marker(eCoords).addTo(leafletMap.current).bindPopup(endRes[0].label);
 
         // Fit map to bounds
         const bounds = L.latLngBounds(coordinates);
