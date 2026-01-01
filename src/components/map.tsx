@@ -20,6 +20,7 @@ type MapProps = {
   blackSpots: BlackSpot[];
   travelMode: TravelMode;
   locateUser: boolean;
+  startNavigation: boolean;
   onSafetyBriefing: (briefing: string | null) => void;
   onRouteDetails: (details: { distance: number, duration: number } | null) => void;
   onMapError: (message: string) => void;
@@ -33,6 +34,7 @@ const MapComponent = ({
   blackSpots,
   travelMode,
   locateUser,
+  startNavigation,
   onSafetyBriefing, 
   onRouteDetails,
   onMapError,
@@ -107,6 +109,14 @@ const MapComponent = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locateUser]);
 
+  // Handle starting navigation
+  useEffect(() => {
+    if (startNavigation && leafletMap.current && startMarker.current) {
+      const startLatLng = startMarker.current.getLatLng();
+      leafletMap.current.setView(startLatLng, 16, { animate: true });
+    }
+  }, [startNavigation]);
+
   // Update black spots
   useEffect(() => {
     if (!leafletMap.current || !blackSpotsLayer.current) return;
@@ -134,7 +144,10 @@ const MapComponent = ({
   // Handle route search
   useEffect(() => {
     const fetchRoute = async () => {
-      if ((!startLocation && typeof startLocation !== 'object') || !endLocation || !leafletMap.current) return;
+      if ((!startLocation && typeof startLocation !== 'object') || !endLocation || !leafletMap.current) {
+        onRouteDetails(null);
+        return;
+      }
       
       onLoading(true);
       onSafetyBriefing(null);

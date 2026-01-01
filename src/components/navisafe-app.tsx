@@ -33,6 +33,7 @@ import {
   Bike,
   Clock,
   Milestone,
+  Play,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -69,6 +70,7 @@ export default function NaviSafeApp() {
   const [currentLocation, setCurrentLocation] = useState<CurrentLocation>(null);
 
   const [activeRoute, setActiveRoute] = useState<{ start: string | { lat: number, lng: number }, end: string }>({ start: '', end: '' });
+  const [isRoutePlanned, setIsRoutePlanned] = useState(false);
 
   const [safetyBriefing, setSafetyBriefing] = useState<string | null>(null);
   const [routeDetails, setRouteDetails] = useState<RouteDetails>(null);
@@ -81,6 +83,7 @@ export default function NaviSafeApp() {
   const [newSpotRisk, setNewSpotRisk] = useState<'High' | 'Medium'>('Medium');
   const [newSpotDescription, setNewSpotDescription] = useState('');
   const [locateUser, setLocateUser] = useState(false);
+  const [startNavigation, setStartNavigation] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +104,18 @@ export default function NaviSafeApp() {
 
     setSafetyBriefing(null);
     setRouteDetails(null);
+    setIsRoutePlanned(false);
+    setStartNavigation(false);
     setActiveRoute({ start: startValue, end: endInput });
+  };
+  
+  const handleStartNavigation = () => {
+    setStartNavigation(true);
+    toast({
+      title: 'Navigation Started',
+      description: 'Centering map on your starting location.',
+    });
+     setTimeout(() => setStartNavigation(false), 500);
   };
 
   const handleMapClick = (latlng: { lat: number; lng: number }) => {
@@ -185,6 +199,16 @@ export default function NaviSafeApp() {
     setNewSpotRisk('Medium');
     setIsAddMode(false);
   };
+  
+  const handleRouteDetails = (details: RouteDetails) => {
+    if (details) {
+      setRouteDetails(details);
+      setIsRoutePlanned(true);
+    } else {
+      setIsRoutePlanned(false);
+    }
+  };
+
 
   const isHighRisk =
     safetyBriefing &&
@@ -278,7 +302,7 @@ export default function NaviSafeApp() {
           {/* Search Form */}
           <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-transparent">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Plan Your Journey</CardTitle>
+              <CardTitle className="text-base">Enter Travel Mode</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSearch} className="space-y-4">
@@ -350,7 +374,7 @@ export default function NaviSafeApp() {
                   ) : (
                     <>
                       <Search className="mr-2 h-4 w-4" />
-                      Find Safer Route
+                      Plan Route
                     </>
                   )}
                 </Button>
@@ -385,26 +409,36 @@ export default function NaviSafeApp() {
               </CardContent>
             </Card>
           
-          {/* Route Details */}
-          {routeDetails && !isSearching && (
-             <Card className="border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/20">
+          {/* Route Details & Start Button */}
+          {isRoutePlanned && !isSearching && (
+             <Card className="border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/20 animate-in fade-in duration-500">
                 <CardHeader>
-                  <CardTitle className="text-base text-blue-800 dark:text-blue-300">Route Details</CardTitle>
+                  <CardTitle className="text-base text-blue-800 dark:text-blue-300">Route Ready</CardTitle>
                 </CardHeader>
-                <CardContent className="flex justify-around items-center text-center">
-                  <div className="flex flex-col items-center gap-1">
-                    <Milestone className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                    <p className="font-bold text-lg">{(routeDetails.distance / 1000).toFixed(1)}</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">km</p>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-around items-center text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <Milestone className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                      <p className="font-bold text-lg">{(routeDetails!.distance / 1000).toFixed(1)}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">km</p>
+                    </div>
+                    <div className="flex flex-col items-center gap-1">
+                      <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                      <p className="font-bold text-lg">{formatDuration(routeDetails!.duration)}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Est. Time</p>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-center gap-1">
-                    <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                    <p className="font-bold text-lg">{formatDuration(routeDetails.duration)}</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Est. Time</p>
-                  </div>
+                   <Button
+                    onClick={handleStartNavigation}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Navigation
+                  </Button>
                 </CardContent>
               </Card>
           )}
+
 
           {/* Safety Briefing Result */}
           {safetyBriefing && !isSearching && (
@@ -451,16 +485,18 @@ export default function NaviSafeApp() {
           travelMode={travelMode}
           onMapClick={handleMapClick}
           onSafetyBriefing={setSafetyBriefing}
-          onRouteDetails={setRouteDetails}
+          onRouteDetails={handleRouteDetails}
           onMapError={message => {
             toast({
               variant: 'destructive',
               title: 'Route Error',
               description: message,
             });
+            setIsRoutePlanned(false);
           }}
           onLoading={setIsSearching}
           locateUser={locateUser}
+          startNavigation={startNavigation}
         />
         {isAddMode && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">
