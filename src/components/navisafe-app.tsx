@@ -11,15 +11,31 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Label } from "@/components/ui/label"
 import { 
   Loader2, 
   Map as MapIcon, 
   Search, 
   ShieldAlert, 
   ShieldCheck, 
-  Navigation 
+  Navigation,
+  PlusCircle,
+  MapPin,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { BlackSpot, blackSpots as initialBlackSpots } from '@/lib/data';
 
 // Dynamically import the map to ensure it's client-side only
 const MapComponent = dynamic(() => import('@/components/map'), {
@@ -32,19 +48,27 @@ const MapComponent = dynamic(() => import('@/components/map'), {
   ),
 });
 
+type NewSpotInfo = { lat: number; lng: number } | null;
+
 export default function NaviSafeApp() {
   const [startInput, setStartInput] = useState('Alappuzha');
   const [endInput, setEndInput] = useState('Pathanamthitta');
   
-  // This state triggers the map update
   const [activeRoute, setActiveRoute] = useState({ start: '', end: '' });
   
   const [safetyBriefing, setSafetyBriefing] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const { toast } = useToast();
 
+  const [blackSpots, setBlackSpots] = useState<BlackSpot[]>(initialBlackSpots);
+  const [isAddMode, setIsAddMode] = useState(false);
+  const [newSpotInfo, setNewSpotInfo] = useState<NewSpotInfo>(null);
+  const [newSpotRisk, setNewSpotRisk] = useState<'High' | 'Medium'>('Medium');
+  const [newSpotDescription, setNewSpotDescription] = useState('');
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAddMode) setIsAddMode(false);
     if (!startInput.trim() || !endInput.trim()) {
       toast({
         variant: "destructive",
@@ -57,8 +81,44 @@ export default function NaviSafeApp() {
     setSafetyBriefing(null);
     setActiveRoute({ start: startInput, end: endInput });
   };
+  
+  const handleMapClick = (latlng: { lat: number; lng: number }) => {
+    if (isAddMode) {
+      setNewSpotInfo(latlng);
+    }
+  };
 
-  // Determine alert style based on briefing content
+  const handleSaveNewSpot = () => {
+    if (!newSpotInfo || !newSpotDescription.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Incomplete Information",
+        description: "Please provide a valid description for the new black spot."
+      });
+      return;
+    }
+    
+    const newSpot: BlackSpot = {
+      id: `bs-${Date.now()}`,
+      lat: newSpotInfo.lat,
+      lng: newSpotInfo.lng,
+      risk_level: newSpotRisk,
+      accident_history: newSpotDescription,
+    };
+    
+    setBlackSpots(prev => [...prev, newSpot]);
+    toast({
+      title: "Black Spot Added",
+      description: "The new accident-prone area has been added to the map."
+    });
+    
+    setNewSpotInfo(null);
+    setNewSpotDescription('');
+    setNewSpotRisk('Medium');
+    setIsAddMode(false);
+  };
+
+
   const isHighRisk = safetyBriefing && (
     safetyBriefing.toLowerCase().includes("caution") || 
     safetyBriefing.toLowerCase().includes("high risk") ||
@@ -68,6 +128,45 @@ export default function NaviSafeApp() {
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 overflow-hidden font-sans">
       
+      <AlertDialog open={!!newSpotInfo} onOpenChange={() => setNewSpotInfo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add New Accident-Prone Area</AlertDialogTitle>
+            <AlertDialogDescription>
+              You've marked a new location. Please provide the details for this black spot.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Risk Level</Label>
+              <RadioGroup defaultValue="Medium" value={newSpotRisk} onValueChange={(val: 'High' | 'Medium') => setNewSpotRisk(val)}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="Medium" id="r-medium" />
+                  <Label htmlFor="r-medium">Medium Risk</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="High" id="r-high" className="text-red-600 border-red-600" />
+                  <Label htmlFor="r-high">High Risk</Label>
+                </div>
+              </RadioGroup>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Accident History / Description</Label>
+              <Textarea
+                id="description"
+                placeholder="e.g., 'Sharp blind curve, frequent head-on collisions.'"
+                value={newSpotDescription}
+                onChange={(e) => setNewSpotDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveNewSpot}>Save Spot</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* SIDEBAR CONTROL PANEL */}
       <div className="w-full md:w-[400px] flex-shrink-0 bg-white border-r border-slate-200 z-20 shadow-xl flex flex-col h-[40vh] md:h-full">
         
@@ -135,6 +234,30 @@ export default function NaviSafeApp() {
             </CardContent>
           </Card>
 
+           {/* Add Black Spot */}
+           <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Contribute Data</CardTitle>
+            </CardHeader>
+            <CardContent>
+               <Button 
+                  variant="outline"
+                  className={`w-full transition-colors ${isAddMode ? 'bg-amber-100 border-amber-400 text-amber-800' : ''}`}
+                  onClick={() => setIsAddMode(!isAddMode)}
+                  disabled={isSearching}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  {isAddMode ? 'Cancel' : 'Add Accident Area'}
+                </Button>
+                {isAddMode && (
+                  <div className="text-center text-xs text-slate-500 p-2 mt-2 bg-slate-50 rounded-md border">
+                    Click a location on the map to add a new black spot.
+                  </div>
+                )}
+            </CardContent>
+          </Card>
+
+
           {/* Safety Briefing Result */}
           {safetyBriefing && !isSearching && (
             <div className="animate-in slide-in-from-bottom-2 fade-in duration-500">
@@ -168,16 +291,24 @@ export default function NaviSafeApp() {
       </div>
 
       {/* MAP AREA */}
-      <div className="flex-1 relative h-[60vh] md:h-full w-full bg-slate-200">
+      <div className={`flex-1 relative h-[60vh] md:h-full w-full bg-slate-200 ${isAddMode ? 'cursor-crosshair' : ''}`}>
         <MapComponent
           startLocation={activeRoute.start}
           endLocation={activeRoute.end}
+          blackSpots={blackSpots}
+          onMapClick={handleMapClick}
           onSafetyBriefing={setSafetyBriefing}
           onMapError={(message) => {
             toast({ variant: 'destructive', title: 'Route Error', description: message });
           }}
           onLoading={setIsSearching}
         />
+        {isAddMode && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/90 rounded-lg shadow-2xl pointer-events-none text-center">
+            <MapPin className="mx-auto h-8 w-8 text-blue-600 animate-bounce" />
+            <p className="font-bold text-slate-800">Click to place a new black spot</p>
+          </div>
+        )}
       </div>
 
     </div>

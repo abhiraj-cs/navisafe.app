@@ -7,7 +7,7 @@ import 'leaflet-defaulticon-compatibility';
 import 'leaflet-geosearch/dist/geosearch.css';
 import L from 'leaflet';
 import { OpenStreetMapProvider } from 'leaflet-geosearch';
-import { blackSpots, BlackSpot } from '@/lib/data';
+import { BlackSpot } from '@/lib/data';
 import { getSafetyBriefing } from '@/lib/actions';
 import { haversineDistance } from '@/lib/utils';
 
@@ -16,17 +16,21 @@ const COLLISION_THRESHOLD = 500;
 type MapProps = {
   startLocation: string;
   endLocation: string;
+  blackSpots: BlackSpot[];
   onSafetyBriefing: (briefing: string | null) => void;
   onMapError: (message: string) => void;
   onLoading: (loading: boolean) => void;
+  onMapClick: (latlng: { lat: number, lng: number }) => void;
 };
 
 const MapComponent = ({ 
   startLocation, 
   endLocation, 
+  blackSpots,
   onSafetyBriefing, 
   onMapError,
-  onLoading
+  onLoading,
+  onMapClick
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -47,26 +51,48 @@ const MapComponent = ({
         attribution: '&copy; OpenStreetMap contributors',
       }).addTo(leafletMap.current);
       
-      // Initialize and add black spots layer
+      // Initialize black spots layer
       blackSpotsLayer.current = L.layerGroup().addTo(leafletMap.current);
-      blackSpots.forEach((spot) => {
-        const color = spot.risk_level === 'High' ? '#ef4444' : '#f97316';
-        L.circleMarker([spot.lat, spot.lng], {
-          radius: 12,
-          color: color,
-          fillColor: color,
-          fillOpacity: 0.6,
-        })
-        .bindPopup(`
-          <div class="p-2">
-            <h3 class="font-bold text-red-600">⚠️ ${spot.risk_level} Risk Zone</h3>
-            <p class="text-sm">${spot.accident_history}</p>
-          </div>
-        `)
-        .addTo(blackSpotsLayer.current!);
+
+      leafletMap.current.on('click', (e) => {
+        onMapClick(e.latlng);
       });
     }
+    
+    // Cleanup on unmount
+    const map = leafletMap.current;
+    return () => {
+      if (map) {
+        map.remove();
+        leafletMap.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Update black spots
+  useEffect(() => {
+    if (!leafletMap.current || !blackSpotsLayer.current) return;
+    
+    blackSpotsLayer.current.clearLayers();
+    
+    blackSpots.forEach((spot) => {
+      const color = spot.risk_level === 'High' ? '#ef4444' : '#f97316';
+      L.circleMarker([spot.lat, spot.lng], {
+        radius: 12,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.6,
+      })
+      .bindPopup(`
+        <div class="p-2">
+          <h3 class="font-bold ${spot.risk_level === 'High' ? 'text-red-600' : 'text-orange-600'}">⚠️ ${spot.risk_level} Risk Zone</h3>
+          <p class="text-sm">${spot.accident_history}</p>
+        </div>
+      `)
+      .addTo(blackSpotsLayer.current!);
+    });
+  }, [blackSpots]);
 
   // Handle route search
   useEffect(() => {
@@ -140,9 +166,9 @@ const MapComponent = ({
 
     fetchRoute();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startLocation, endLocation]);
+  }, [startLocation, endLocation, blackSpots]); // Re-run if blackspots change to update briefing
 
   return <div ref={mapRef} className="h-full w-full z-0" />;
 };
 
-export default React.memo(MapComponent);
+export default MapComponent;
