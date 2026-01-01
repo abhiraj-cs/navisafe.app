@@ -29,23 +29,13 @@ import {
   Navigation,
   PlusCircle,
   MapPin,
-  User,
-  LogOut,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useCollection, useUser } from '@/firebase';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { Avatar, AvatarFallback } from './ui/avatar';
+import { useCollection } from '@/firebase';
 import { ThemeToggle } from './theme-toggle';
 import { collection, addDoc } from 'firebase/firestore';
 import { BlackSpot } from '@/lib/data';
+import { useFirebase } from '@/firebase';
 
 // Dynamically import the map to ensure it's client-side only
 const MapComponent = dynamic(() => import('@/components/map'), {
@@ -61,7 +51,7 @@ const MapComponent = dynamic(() => import('@/components/map'), {
 type NewSpotInfo = { lat: number; lng: number } | null;
 
 export default function NaviSafeApp() {
-  const { user, auth, db } = useUser();
+  const { db } = useFirebase();
   const { data: blackSpots, loading: blackSpotsLoading } = useCollection<BlackSpot>(
     db ? collection(db, 'black_spots') : null
   );
@@ -147,12 +137,6 @@ export default function NaviSafeApp() {
       safetyBriefing.toLowerCase().includes('high risk') ||
       safetyBriefing.toLowerCase().includes('danger'));
 
-  const handleLogout = async () => {
-    if (auth) {
-      await auth.signOut();
-      // The useUser hook will redirect to /login
-    }
-  };
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans">
@@ -226,34 +210,6 @@ export default function NaviSafeApp() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>
-                      <User className="h-4 w-4" />
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {user?.displayName || 'User'}
-                    </p>
-                    <p className="text-xs leading-none text-muted-foreground">
-                      {user?.email}
-                    </p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
 
@@ -311,7 +267,7 @@ export default function NaviSafeApp() {
             </CardContent>
           </Card>
 
-          {user?.customClaims?.role === 'admin' && (
+          
             <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-transparent">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Contribute Data</CardTitle>
@@ -337,7 +293,7 @@ export default function NaviSafeApp() {
                 )}
               </CardContent>
             </Card>
-          )}
+          
 
           {/* Safety Briefing Result */}
           {safetyBriefing && !isSearching && (
