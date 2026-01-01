@@ -1,18 +1,17 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState, memo, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
 import 'leaflet-defaulticon-compatibility';
 import 'leaflet-geosearch/dist/geosearch.css';
-import L, { type LatLngBoundsExpression, type LatLngExpression } from 'leaflet';
-import { MapContainer, TileLayer, Polyline, Marker, CircleMarker, Popup, useMap } from 'react-leaflet';
-import { blackSpots, type BlackSpot } from '@/lib/data';
+import L from 'leaflet';
+import { OpenStreetMapProvider } from 'leaflet-geosearch';
+import { blackSpots, BlackSpot } from '@/lib/data';
 import { getSafetyBriefing } from '@/lib/actions';
 import { haversineDistance } from '@/lib/utils';
-import { OpenStreetMapProvider } from 'leaflet-geosearch';
 
-const COLLISION_THRESHOLD = 50; // meters
+const COLLISION_THRESHOLD = 500; 
 
 type MapProps = {
   startLocation: string;
@@ -22,149 +21,128 @@ type MapProps = {
   onLoading: (loading: boolean) => void;
 };
 
-const ChangeView = ({ bounds }: { bounds: LatLngBoundsExpression | null }) => {
-  const map = useMap();
+const MapComponent = ({ 
+  startLocation, 
+  endLocation, 
+  onSafetyBriefing, 
+  onMapError,
+  onLoading
+}: MapProps) => {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMap = useRef<L.Map | null>(null);
+  const routeLayer = useRef<L.Polyline | null>(null);
+  const startMarker = useRef<L.Marker | null>(null);
+  const endMarker = useRef<L.Marker | null>(null);
+  const blackSpotsLayer = useRef<L.LayerGroup | null>(null);
+
+  // Initialize map
   useEffect(() => {
-    if (bounds) {
-      map.fitBounds(bounds, { padding: [50, 50] });
+    if (leafletMap.current === null && mapRef.current) {
+      leafletMap.current = L.map(mapRef.current, {
+        center: [9.35, 76.6],
+        zoom: 9,
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(leafletMap.current);
+      
+      // Initialize and add black spots layer
+      blackSpotsLayer.current = L.layerGroup().addTo(leafletMap.current);
+      blackSpots.forEach((spot) => {
+        const color = spot.risk_level === 'High' ? '#ef4444' : '#f97316';
+        L.circleMarker([spot.lat, spot.lng], {
+          radius: 12,
+          color: color,
+          fillColor: color,
+          fillOpacity: 0.6,
+        })
+        .bindPopup(`
+          <div class="p-2">
+            <h3 class="font-bold text-red-600">⚠️ ${spot.risk_level} Risk Zone</h3>
+            <p class="text-sm">${spot.accident_history}</p>
+          </div>
+        `)
+        .addTo(blackSpotsLayer.current!);
+      });
     }
-  }, [bounds, map]);
+  }, []);
 
-  return null;
-};
-
-function MapComponent({ startLocation, endLocation, onSafetyBriefing, onMapError, onLoading }: MapProps) {
-  const [route, setRoute] = useState<LatLngExpression[] | null>(null);
-  const [bounds, setBounds] = useState<LatLngBoundsExpression | null>(null);
-  const [startCoords, setStartCoords] = useState<[number, number] | null>(null);
-  const [endCoords, setEndCoords] = useState<[number, number] | null>(null);
-  
-  const geoProviderRef = useRef<OpenStreetMapProvider | null>(null);
-  
-  if (!geoProviderRef.current) {
-    geoProviderRef.current = new OpenStreetMapProvider();
-  }
-
+  // Handle route search
   useEffect(() => {
-    const geocodeAndFetch = async () => {
-        if (!startLocation || !endLocation || !geoProviderRef.current) return;
-        
-        onLoading(true);
-        setRoute(null); // Clear previous route
-        onSafetyBriefing(null);
+    const fetchRoute = async () => {
+      if (!startLocation || !endLocation || !leafletMap.current) return;
+      
+      onLoading(true);
+      onSafetyBriefing(null);
+      onMapError("");
 
-        try {
-            const startResults = await geoProviderRef.current.search({ query: startLocation });
-            const endResults = await geoProviderRef.current.search({ query: endLocation });
+      // Clear previous route layers
+      if (routeLayer.current) leafletMap.current.removeLayer(routeLayer.current);
+      if (startMarker.current) leafletMap.current.removeLayer(startMarker.current);
+      if (endMarker.current) leafletMap.current.removeLayer(endMarker.current);
+      
+      try {
+        const provider = new OpenStreetMapProvider();
+        const startRes = await provider.search({ query: startLocation });
+        const endRes = await provider.search({ query: endLocation });
 
-            if (startResults.length === 0 || endResults.length === 0) {
-                throw new Error('Could not find one or both locations. Please try again with more specific addresses.');
-            }
-            
-            const newStartCoords: [number, number] = [startResults[0].y, startResults[0].x];
-            const newEndCoords: [number, number] = [endResults[0].y, endResults[0].x];
-            
-            setStartCoords(newStartCoords);
-            setEndCoords(newEndCoords);
-
-            // Fetch route
-            const osrmStart = `${newStartCoords[1]},${newStartCoords[0]}`;
-            const osrmEnd = `${newEndCoords[1]},${newEndCoords[0]}`;
-            const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${osrmStart};${osrmEnd}?geometries=geojson`);
-
-            if (!response.ok) throw new Error('Failed to fetch route from OSRM');
-            const data = await response.json();
-
-            if (!data.routes || data.routes.length === 0) {
-                throw new Error('No route found between the specified locations.');
-            }
-
-            const routeGeometry = data.routes[0].geometry.coordinates.map((c: [number, number]) => [c[1], c[0]]);
-            setRoute(routeGeometry);
-            setBounds(L.latLngBounds(routeGeometry));
-
-            // Collision detection
-            const routePoints = routeGeometry.map((p: [number, number]) => ({ lat: p[0], lon: p[1] }));
-            const collidingSpots = new Set<BlackSpot>();
-
-            for (const spot of blackSpots) {
-                for (const point of routePoints) {
-                if (haversineDistance({ lat: spot.lat, lon: spot.lng }, point) <= COLLISION_THRESHOLD) {
-                    collidingSpots.add(spot);
-                    break; 
-                }
-                }
-            }
-
-            const briefing = await getSafetyBriefing(Array.from(collidingSpots));
-            onSafetyBriefing(briefing);
-
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-            console.error(err);
-            onMapError(`Failed to calculate the route. ${errorMessage}`);
-            // If route fails, just show markers if they exist
-            const newBounds = [startCoords, endCoords].filter(Boolean) as LatLngExpression[];
-            if (newBounds.length > 0) {
-              setBounds(L.latLngBounds(newBounds));
-            }
-        } finally {
-            onLoading(false);
+        if (!startRes.length || !endRes.length) {
+          throw new Error("One or both locations could not be found.");
         }
+
+        const sCoords: [number, number] = [startRes[0].y, startRes[0].x];
+        const eCoords: [number, number] = [endRes[0].y, endRes[0].x];
+
+        // Fetch route from OSRM
+        const url = `https://router.project-osrm.org/route/v1/driving/${sCoords[1]},${sCoords[0]};${eCoords[1]},${eCoords[0]}?geometries=geojson`;
+        const res = await fetch(url);
+        const json = await res.json();
+
+        if (!json.routes || !json.routes.length) {
+          throw new Error("No route could be found between the locations.");
+        }
+
+        const coordinates = json.routes[0].geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
+        
+        // Add new route polyline
+        routeLayer.current = L.polyline(coordinates, { color: '#3b82f6', weight: 6 }).addTo(leafletMap.current);
+        
+        // Add markers
+        startMarker.current = L.marker(sCoords).addTo(leafletMap.current).bindPopup('Start');
+        endMarker.current = L.marker(eCoords).addTo(leafletMap.current).bindPopup('Destination');
+
+        // Fit map to bounds
+        const bounds = L.latLngBounds(coordinates);
+        leafletMap.current.fitBounds(bounds, { padding: [50, 50] });
+
+        // Collision Detection
+        const detected = new Set<BlackSpot>();
+        coordinates.forEach((point: [number, number], index: number) => {
+           if (index % 10 !== 0) return; // Optimization
+           blackSpots.forEach(spot => {
+             const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
+             if (dist < COLLISION_THRESHOLD) detected.add(spot);
+           });
+        });
+
+        // Get AI Safety Briefing
+        const briefing = await getSafetyBriefing(Array.from(detected));
+        onSafetyBriefing(briefing);
+
+      } catch (e: any) {
+        console.error("Routing error:", e);
+        onMapError(e.message || "An unknown error occurred during routing.");
+      } finally {
+        onLoading(false);
+      }
     };
-    
-    if (startLocation && endLocation) {
-        geocodeAndFetch();
-    } else {
-        // Default view for Alappuzha and Pathanamthitta
-        setBounds(L.latLngBounds([9.0, 76.2], [9.7, 77.0]));
-    }
+
+    fetchRoute();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startLocation, endLocation]);
-  
-  const startMarker = startCoords ? (startCoords as LatLngExpression) : null;
-  const endMarker = endCoords ? (endCoords as LatLngExpression) : null;
 
-  return (
-    <div className="h-full w-full z-0">
-        <MapContainer
-            center={[9.35, 76.6]} // Center between Alappuzha and Pathanamthitta
-            zoom={9}
-            scrollWheelZoom={true}
-            className="h-full w-full"
-        >
-            <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {blackSpots.map(spot => (
-            <CircleMarker
-                key={spot.id}
-                center={[spot.lat, spot.lng]}
-                radius={8}
-                pathOptions={{
-                color: spot.risk_level === 'High' ? 'hsl(var(--destructive))' : 'hsl(28 80% 52% / 0.8)',
-                fillColor: spot.risk_level === 'High' ? 'hsl(var(--destructive))' : 'hsl(28 80% 52% / 0.8)',
-                fillOpacity: 0.7,
-                }}
-            >
-                <Popup>
-                <b>Risk Level: {spot.risk_level}</b>
-                <br />
-                {spot.accident_history}
-                </Popup>
-            </CircleMarker>
-            ))}
+  return <div ref={mapRef} className="h-full w-full z-0" />;
+};
 
-            {route && <Polyline pathOptions={{ color: 'hsl(var(--primary))', weight: 6 }} positions={route} />}
-
-            {startMarker && <Marker position={startMarker}><Popup>Start</Popup></Marker>}
-            {endMarker && <Marker position={endMarker}><Popup>End</Popup></Marker>}
-
-            <ChangeView bounds={bounds} />
-        </MapContainer>
-    </div>
-  );
-}
-
-export default memo(MapComponent);
+export default React.memo(MapComponent);
