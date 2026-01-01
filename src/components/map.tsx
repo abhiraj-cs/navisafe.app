@@ -5,12 +5,11 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
 import 'leaflet-defaulticon-compatibility';
 import 'leaflet-geosearch/dist/geosearch.css';
-
+import L, { type LatLngBoundsExpression, type LatLngExpression } from 'leaflet';
 import { MapContainer, TileLayer, Polyline, Marker, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { blackSpots, type BlackSpot } from '@/lib/data';
 import { getSafetyBriefing } from '@/lib/actions';
 import { haversineDistance } from '@/lib/utils';
-import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import { Loader2 } from 'lucide-react';
 import { OpenStreetMapProvider } from 'leaflet-geosearch';
 
@@ -42,16 +41,18 @@ function MapComponent({ startLocation, endLocation, onSafetyBriefing, onMapError
   const [endCoords, setEndCoords] = useState<[number, number] | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   
-  // Use a ref to ensure geocoding provider is created only once
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const geoProviderRef = useRef<OpenStreetMapProvider | null>(null);
+  
   if (!geoProviderRef.current) {
     geoProviderRef.current = new OpenStreetMapProvider();
   }
 
-
   useEffect(() => {
-    // This effect ensures map is only rendered on the client
-    setIsMapReady(true);
+    // This effect ensures map is only rendered on the client and only once.
+    if (mapContainerRef.current && !mapContainerRef.current.hasChildNodes()) {
+       setIsMapReady(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -135,51 +136,51 @@ function MapComponent({ startLocation, endLocation, onSafetyBriefing, onMapError
   const startMarker = startCoords ? (startCoords as LatLngExpression) : null;
   const endMarker = endCoords ? (endCoords as LatLngExpression) : null;
 
-  if (!isMapReady) {
-    return (
+  return (
+    <div ref={mapContainerRef} className="h-full w-full z-0">
+      {!isMapReady ? (
         <div className="h-full w-full bg-muted flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-    );
-  }
-
-  return (
-    <MapContainer
-        center={[51.505, -0.09]} // Default center, will be overridden by ChangeView
-        zoom={12}
-        scrollWheelZoom={true}
-        className="h-full w-full z-0"
-    >
-        <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        {blackSpots.map(spot => (
-        <CircleMarker
-            key={spot.id}
-            center={[spot.lat, spot.lng]}
-            radius={8}
-            pathOptions={{
-            color: spot.risk_level === 'High' ? 'hsl(var(--destructive))' : 'hsl(28 80% 52% / 0.8)',
-            fillColor: spot.risk_level === 'High' ? 'hsl(var(--destructive))' : 'hsl(28 80% 52% / 0.8)',
-            fillOpacity: 0.7,
-            }}
+      ) : (
+        <MapContainer
+            center={[51.505, -0.09]} // Default center, will be overridden by ChangeView
+            zoom={12}
+            scrollWheelZoom={true}
+            className="h-full w-full"
         >
-            <Popup>
-            <b>Risk Level: {spot.risk_level}</b>
-            <br />
-            {spot.accident_history}
-            </Popup>
-        </CircleMarker>
-        ))}
+            <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            {blackSpots.map(spot => (
+            <CircleMarker
+                key={spot.id}
+                center={[spot.lat, spot.lng]}
+                radius={8}
+                pathOptions={{
+                color: spot.risk_level === 'High' ? 'hsl(var(--destructive))' : 'hsl(28 80% 52% / 0.8)',
+                fillColor: spot.risk_level === 'High' ? 'hsl(var(--destructive))' : 'hsl(28 80% 52% / 0.8)',
+                fillOpacity: 0.7,
+                }}
+            >
+                <Popup>
+                <b>Risk Level: {spot.risk_level}</b>
+                <br />
+                {spot.accident_history}
+                </Popup>
+            </CircleMarker>
+            ))}
 
-        {route && <Polyline pathOptions={{ color: 'hsl(var(--primary))', weight: 6 }} positions={route} />}
+            {route && <Polyline pathOptions={{ color: 'hsl(var(--primary))', weight: 6 }} positions={route} />}
 
-        {startMarker && <Marker position={startMarker}><Popup>Start</Popup></Marker>}
-        {endMarker && <Marker position={endMarker}><Popup>End</Popup></Marker>}
+            {startMarker && <Marker position={startMarker}><Popup>Start</Popup></Marker>}
+            {endMarker && <Marker position={endMarker}><Popup>End</Popup></Marker>}
 
-        <ChangeView bounds={bounds} />
-    </MapContainer>
+            <ChangeView bounds={bounds} />
+        </MapContainer>
+      )}
+    </div>
   );
 }
 
