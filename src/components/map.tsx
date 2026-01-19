@@ -42,6 +42,7 @@ const createWarningIcon = (riskLevel: 'High' | 'Medium', reportCount: number) =>
 type MapProps = {
   startLocation: string | { lat: number; lng: number };
   endLocation: string;
+  stops: { lat: number, lng: number }[];
   blackSpots: BlackSpot[];
   travelMode: TravelMode;
   locateUser: boolean;
@@ -59,7 +60,8 @@ const alternativeRouteStyle = { color: '#9ca3af', weight: 5, opacity: 0.7 };
 
 const MapComponent = ({ 
   startLocation, 
-  endLocation, 
+  endLocation,
+  stops,
   blackSpots,
   travelMode,
   locateUser,
@@ -77,6 +79,7 @@ const MapComponent = ({
   const startMarker = useRef<L.Marker | null>(null);
   const endMarker = useRef<L.Marker | null>(null);
   const blackSpotsLayer = useRef<L.LayerGroup | null>(null);
+  const stopsLayer = useRef<L.LayerGroup | null>(null);
   const userLocationMarker = useRef<L.Marker | null>(null);
 
   const [routes, setRoutes] = useState<any[]>([]);
@@ -106,6 +109,7 @@ const MapComponent = ({
       
       routeLayers.current = L.layerGroup().addTo(leafletMap.current);
       blackSpotsLayer.current = L.layerGroup().addTo(leafletMap.current);
+      stopsLayer.current = L.layerGroup().addTo(leafletMap.current);
 
        const handleZoomEnd = () => {
         if (!leafletMap.current || !blackSpotsLayer.current) return;
@@ -192,6 +196,29 @@ const MapComponent = ({
       leafletMap.current.setView(startLatLng, 16, { animate: true });
     }
   }, [startNavigation]);
+  
+  // Update stop markers
+  useEffect(() => {
+    if (!leafletMap.current || !stopsLayer.current) return;
+    stopsLayer.current.clearLayers();
+
+    stops.forEach((stop, index) => {
+      const stopIcon = L.divIcon({
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-6 h-6 bg-blue-600 rounded-full opacity-30 animate-pulse"></div>
+            <div class="relative w-5 h-5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center border-2 border-white shadow-md">${index + 1}</div>
+          </div>
+        `,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+      L.marker([stop.lat, stop.lng], { icon: stopIcon })
+        .bindPopup(`Stop ${index + 1}`)
+        .addTo(stopsLayer.current!);
+    });
+  }, [stops]);
 
   // Update black spots
   useEffect(() => {
@@ -227,6 +254,7 @@ const MapComponent = ({
         if (routeLayers.current) routeLayers.current.clearLayers();
         if (startMarker.current && leafletMap.current) leafletMap.current.removeLayer(startMarker.current);
         if (endMarker.current && leafletMap.current) leafletMap.current.removeLayer(endMarker.current);
+        if (stopsLayer.current) stopsLayer.current.clearLayers();
         return;
       }
 
@@ -262,42 +290,56 @@ const MapComponent = ({
         endMarker.current = L.marker(eCoords).addTo(leafletMap.current).bindPopup(endRes[0].label);
 
         const profile = travelMode === 'car' ? 'driving' : 'biking';
+        
+        const waypoints = [
+          [sCoords[1], sCoords[0]], // OSRM wants lon, lat
+          ...stops.map(s => [s.lng, s.lat]),
+          [eCoords[1], eCoords[0]]
+        ];
+        const waypointsString = waypoints.map(c => c.join(',')).join(';');
+        const alternativesEnabled = stops.length === 0;
 
-        const url = `https://router.project-osrm.org/route/v1/${profile}/${sCoords[1]},${sCoords[0]};${eCoords[1]},${eCoords[0]}?geometries=geojson&alternatives=true&overview=full`;
+        const url = `https://router.project-osrm.org/route/v1/${profile}/${waypointsString}?geometries=geojson&alternatives=${alternativesEnabled}&overview=full`;
         const res = await fetch(url);
         const json = await res.json();
 
         if (!json.routes || !json.routes.length) {
           throw new Error("No route could be found between the locations.");
         }
-        
-        const routesWithScores = json.routes.map((route: any) => {
-          const coordinates = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
-          let riskScore = 0;
-          const detectedSpots = new Set<string>();
 
-          coordinates.forEach((point: [number, number]) => {
-            (blackSpots || []).forEach(spot => {
-              if (detectedSpots.has(spot.id)) return;
+        const calculateRiskScore = (route: any) => {
+            const coordinates = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
+            let riskScore = 0;
+            const detectedSpots = new Set<string>();
 
-              const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
-              if (dist < COLLISION_THRESHOLD) {
-                riskScore += (spot.risk_level === 'High' ? 10 : 5);
-                detectedSpots.add(spot.id);
-              }
+            coordinates.forEach((point: [number, number]) => {
+              (blackSpots || []).forEach(spot => {
+                if (detectedSpots.has(spot.id)) return;
+                const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
+                if (dist < COLLISION_THRESHOLD) {
+                  riskScore += (spot.risk_level === 'High' ? 10 : 5);
+                  detectedSpots.add(spot.id);
+                }
+              });
             });
+            return riskScore;
+        }
+        
+        if (alternativesEnabled) {
+          const routesWithScores = json.routes.map((route: any) => ({
+            ...route, 
+            riskScore: calculateRiskScore(route)
+          }));
+          const sortedRoutes = routesWithScores.sort((a: any, b: any) => {
+            if (a.riskScore !== b.riskScore) return a.riskScore - b.riskScore;
+            return a.duration - b.duration;
           });
-          return { ...route, riskScore };
-        });
+          setRoutes(sortedRoutes);
+        } else {
+          const routeWithScore = { ...json.routes[0], riskScore: calculateRiskScore(json.routes[0]) };
+          setRoutes([routeWithScore]);
+        }
 
-        const sortedRoutes = routesWithScores.sort((a: any, b: any) => {
-          if (a.riskScore !== b.riskScore) {
-            return a.riskScore - b.riskScore;
-          }
-          return a.duration - b.duration;
-        });
-
-        setRoutes(sortedRoutes);
         setSelectedRouteIndex(0);
 
       } catch (e: any) {
@@ -311,7 +353,7 @@ const MapComponent = ({
 
     fetchRoutes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startLocation, endLocation, travelMode, blackSpots]);
+  }, [startLocation, endLocation, travelMode, blackSpots, stops]);
 
   // Draw/update routes when they or selection changes
   useEffect(() => {

@@ -36,6 +36,7 @@ import {
   Play,
   X,
   TextCursorInput,
+  Pin,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -64,6 +65,7 @@ type CurrentLocation = { lat: number; lng: number } | null;
 type RouteDetails = { distance: number; duration: number } | null;
 export type TravelMode = 'car' | 'bike';
 type SpotToConfirm = BlackSpot | null;
+type StopLocation = { lat: number; lng: number };
 
 
 export default function NaviSafeApp() {
@@ -79,6 +81,8 @@ export default function NaviSafeApp() {
 
   const [activeRoute, setActiveRoute] = useState<{ start: string | { lat: number, lng: number }, end: string }>({ start: '', end: '' });
   const [isRoutePlanned, setIsRoutePlanned] = useState(false);
+  const [stops, setStops] = useState<StopLocation[]>([]);
+  const [stopToAdd, setStopToAdd] = useState<StopLocation | null>(null);
 
   const [safetyBriefing, setSafetyBriefing] = useState<string | null>(null);
   const [routeDetails, setRouteDetails] = useState<RouteDetails>(null);
@@ -121,6 +125,7 @@ export default function NaviSafeApp() {
     setRouteDetails(null);
     setIsRoutePlanned(false);
     setStartNavigation(false);
+    setStops([]);
     setActiveRoute({ start: startValue, end: endInput });
   };
   
@@ -140,6 +145,7 @@ export default function NaviSafeApp() {
     setIsRoutePlanned(false);
     setSafetyBriefing(null);
     setRouteDetails(null);
+    setStops([]);
     toast({
       title: 'Route Cleared',
       description: 'The planned route has been removed.',
@@ -147,54 +153,53 @@ export default function NaviSafeApp() {
   };
 
   const handleMapClick = async (latlng: { lat: number; lng: number }) => {
-    if (!isAddMode && !isCoordAddOpen) {
+    if (isAddMode) {
        if (isProcessingSpot) return;
-    } else {
-        if (!isAddMode) return;
-    }
+        setIsProcessingSpot(true);
+        toast({
+          title: 'Verifying Location...',
+          description: 'Snapping to the nearest road and checking for nearby spots.',
+        });
 
-    setIsProcessingSpot(true);
-    toast({
-      title: 'Verifying Location...',
-      description: 'Snapping to the nearest road and checking for nearby spots.',
-    });
+        try {
+          // 1. Snap to nearest road using OSRM
+          const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${latlng.lng},${latlng.lat}`;
+          const osrmRes = await fetch(osrmUrl);
+          const osrmJson = await osrmRes.json();
 
-    try {
-      // 1. Snap to nearest road using OSRM
-      const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${latlng.lng},${latlng.lat}`;
-      const osrmRes = await fetch(osrmUrl);
-      const osrmJson = await osrmRes.json();
+          if (osrmJson.code !== 'Ok' || !osrmJson.waypoints || osrmJson.waypoints.length === 0) {
+            throw new Error('Could not find a road near this location.');
+          }
+          
+          const snappedCoords = osrmJson.waypoints[0].location;
+          const snappedLat = snappedCoords[1];
+          const snappedLng = snappedCoords[0];
 
-      if (osrmJson.code !== 'Ok' || !osrmJson.waypoints || osrmJson.waypoints.length === 0) {
-        throw new Error('Could not find a road near this location.');
-      }
-      
-      const snappedCoords = osrmJson.waypoints[0].location;
-      const snappedLat = snappedCoords[1];
-      const snappedLng = snappedCoords[0];
+          // 2. Check for nearby existing black spots
+          const nearbySpot = blackSpots?.find(spot => {
+            const distance = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: snappedLat, lon: snappedLng });
+            return distance < NEARBY_THRESHOLD;
+          });
 
-      // 2. Check for nearby existing black spots
-      const nearbySpot = blackSpots?.find(spot => {
-        const distance = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: snappedLat, lon: snappedLng });
-        return distance < NEARBY_THRESHOLD;
-      });
+          if (nearbySpot) {
+            // 3a. If nearby spot found, ask for confirmation to increment
+            setSpotToConfirm(nearbySpot);
+          } else {
+            // 3b. If no nearby spot, open the 'add new' dialog
+            setNewSpotInfo({ lat: snappedLat, lng: snappedLng });
+          }
 
-      if (nearbySpot) {
-        // 3a. If nearby spot found, ask for confirmation to increment
-        setSpotToConfirm(nearbySpot);
-      } else {
-        // 3b. If no nearby spot, open the 'add new' dialog
-        setNewSpotInfo({ lat: snappedLat, lng: snappedLng });
-      }
-
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Could Not Add Spot',
-        description: error.message || 'An error occurred while processing the location.',
-      });
-    } finally {
-      setIsProcessingSpot(false);
+        } catch (error: any) {
+          toast({
+            variant: 'destructive',
+            title: 'Could Not Add Spot',
+            description: error.message || 'An error occurred while processing the location.',
+          });
+        } finally {
+          setIsProcessingSpot(false);
+        }
+    } else if (isRoutePlanned) {
+      setStopToAdd(latlng);
     }
   };
   
@@ -353,6 +358,24 @@ export default function NaviSafeApp() {
     }
   };
 
+  const handleAddStopConfirm = () => {
+    if (!stopToAdd) return;
+    setStops([...stops, stopToAdd]);
+    toast({
+      title: 'Stop Added',
+      description: 'Route updated. Alternative routes are now disabled.',
+    });
+    setStopToAdd(null);
+  };
+
+  const handleRemoveStop = (indexToRemove: number) => {
+    setStops(stops.filter((_, index) => index !== indexToRemove));
+    toast({
+      title: 'Stop Removed',
+      description: 'The route has been updated.',
+    });
+  };
+
   const isHighRisk =
     safetyBriefing &&
     (safetyBriefing.toLowerCase().includes('caution') ||
@@ -367,6 +390,24 @@ export default function NaviSafeApp() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans">
+      <AlertDialog
+        open={!!stopToAdd}
+        onOpenChange={() => setStopToAdd(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add Stop</AlertDialogTitle>
+            <AlertDialogDescription>
+              Do you want to add this location as a stop to your route? Adding a stop will disable alternative routes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAddStopConfirm}>Add Stop</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
       <AlertDialog
         open={!!newSpotInfo}
         onOpenChange={() => setNewSpotInfo(null)}
@@ -658,6 +699,21 @@ export default function NaviSafeApp() {
                       <p className="text-xs text-slate-600 dark:text-slate-400">Est. Time</p>
                     </div>
                   </div>
+                  {stops.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-blue-200 dark:border-blue-800/50">
+                        {stops.map((stop, index) => (
+                          <div key={index} className="flex items-center justify-between bg-white/50 dark:bg-black/20 p-2 rounded-md text-sm">
+                            <div className="flex items-center gap-3">
+                              <Pin className="h-5 w-5 text-blue-500" />
+                              <span className="font-medium">Stop {index + 1}</span>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveStop(index)}>
+                              <X className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                    <div className="grid grid-cols-2 gap-2">
                     <Button
                       onClick={handleStartNavigation}
@@ -714,12 +770,13 @@ export default function NaviSafeApp() {
       {/* MAP AREA */}
       <div
         className={`flex-1 relative h-[60vh] md:h-full w-full bg-slate-200 ${
-          isAddMode ? 'cursor-crosshair' : ''
+          isAddMode ? 'cursor-crosshair' : (isRoutePlanned ? 'cursor-copy' : '')
         }`}
       >
         <MapComponent
           startLocation={activeRoute.start}
           endLocation={activeRoute.end}
+          stops={stops}
           blackSpots={blackSpots || []}
           travelMode={travelMode}
           onMapClick={handleMapClick}
@@ -745,6 +802,13 @@ export default function NaviSafeApp() {
             <MapPin className="mx-auto h-8 w-8 text-blue-600" />
             <p className="font-bold text-slate-800 dark:text-slate-200">
               Click to place a new black spot
+            </p>
+          </div>
+        )}
+         {isRoutePlanned && !isAddMode && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] p-2 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-lg pointer-events-none text-center">
+            <p className="font-medium text-slate-800 dark:text-slate-200 text-sm">
+              Click on the map to add a stop
             </p>
           </div>
         )}
