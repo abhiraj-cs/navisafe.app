@@ -82,9 +82,23 @@ const MapComponent = ({
       routeLayers.current = L.layerGroup().addTo(leafletMap.current);
       blackSpotsLayer.current = L.layerGroup().addTo(leafletMap.current);
 
+       const handleZoomEnd = () => {
+        if (!leafletMap.current || !blackSpotsLayer.current) return;
+        const map = leafletMap.current;
+        const layer = blackSpotsLayer.current;
+
+        if (map.getZoom() >= 12) {
+          if (!map.hasLayer(layer)) map.addLayer(layer);
+        } else {
+          if (map.hasLayer(layer)) map.removeLayer(layer);
+        }
+      }
+
       leafletMap.current.on('click', (e) => {
         onMapClickRef.current(e.latlng);
       });
+      
+      leafletMap.current.on('zoomend', handleZoomEnd);
 
       leafletMap.current.on('popupopen', (e) => {
         const popupNode = e.popup.getElement();
@@ -102,6 +116,9 @@ const MapComponent = ({
           }
         }
       });
+      
+      // Initial check
+      handleZoomEnd();
     }
     
     const map = leafletMap.current;
@@ -178,7 +195,7 @@ const MapComponent = ({
     });
   }, [blackSpots]);
 
-  // Fetch routes based on start/end locations
+  // Fetch and score routes based on start/end locations
   useEffect(() => {
     const fetchRoutes = async () => {
       setRoutes([]);
@@ -234,7 +251,33 @@ const MapComponent = ({
           throw new Error("No route could be found between the locations.");
         }
         
-        setRoutes(json.routes);
+        const routesWithScores = json.routes.map((route: any) => {
+          const coordinates = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
+          let riskScore = 0;
+          const detectedSpots = new Set<string>();
+
+          coordinates.forEach((point: [number, number]) => {
+            (blackSpots || []).forEach(spot => {
+              if (detectedSpots.has(spot.id)) return;
+
+              const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
+              if (dist < COLLISION_THRESHOLD) {
+                riskScore += (spot.risk_level === 'High' ? 10 : 5);
+                detectedSpots.add(spot.id);
+              }
+            });
+          });
+          return { ...route, riskScore };
+        });
+
+        const sortedRoutes = routesWithScores.sort((a: any, b: any) => {
+          if (a.riskScore !== b.riskScore) {
+            return a.riskScore - b.riskScore;
+          }
+          return a.duration - b.duration;
+        });
+
+        setRoutes(sortedRoutes);
         setSelectedRouteIndex(0);
 
       } catch (e: any) {
@@ -248,7 +291,7 @@ const MapComponent = ({
 
     fetchRoutes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startLocation, endLocation, travelMode]);
+  }, [startLocation, endLocation, travelMode, blackSpots]);
 
   // Draw/update routes when they or selection changes
   useEffect(() => {
@@ -310,7 +353,7 @@ const MapComponent = ({
     runSafetyAnalysis();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routes, selectedRouteIndex, blackSpots]);
+  }, [routes, selectedRouteIndex]);
 
 
   return <div ref={mapRef} className="h-full w-full z-0" />;
