@@ -48,7 +48,7 @@ type MapProps = {
   locateUser: boolean;
   startNavigation: boolean;
   onSafetyBriefing: (briefing: string | null) => void;
-  onRouteDetails: (details: { distance: number, duration: number } | null) => void;
+  onRouteDetails: (details: any | null) => void;
   onMapError: (message: string) => void;
   onLoading: (loading: boolean) => void;
   onMapClick: (latlng: { lat: number, lng: number }) => void;
@@ -393,7 +393,7 @@ const MapComponent = ({
     const bounds = L.latLngBounds(coordinates);
     leafletMap.current.fitBounds(bounds, { padding: [50, 50] });
 
-    onRouteDetails({ distance: selectedRoute.distance, duration: selectedRoute.duration });
+    onRouteDetails(selectedRoute);
     
     const runSafetyAnalysis = async () => {
       onSafetyBriefing(null); // Clear previous briefing

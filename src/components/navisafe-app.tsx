@@ -62,10 +62,10 @@ const MapComponent = dynamic(() => import('@/components/map'), {
 const NEARBY_THRESHOLD = 50; // 50 meters to consider a spot 'nearby'
 type NewSpotInfo = { lat: number; lng: number } | null;
 type CurrentLocation = { lat: number; lng: number } | null;
-type RouteDetails = { distance: number; duration: number } | null;
+type RouteDetails = any; // Will hold the full OSRM route object
 export type TravelMode = 'car' | 'bike';
 type SpotToConfirm = BlackSpot | null;
-type StopLocation = { lat: number; lng: number };
+type StopLocation = { lat: number; lng: number; name: string };
 
 
 export default function NaviSafeApp() {
@@ -103,6 +103,19 @@ export default function NaviSafeApp() {
   const [isCoordAddOpen, setIsCoordAddOpen] = useState(false);
   const [coordLat, setCoordLat] = useState('');
   const [coordLng, setCoordLng] = useState('');
+
+  const stopDistances = useMemo(() => {
+    if (!routeDetails || !stops.length || !routeDetails.legs) return [];
+    const distances: { cumulativeDistance: number }[] = [];
+    let accumulatedDistance = 0;
+    stops.forEach((_, index) => {
+        const leg = routeDetails.legs?.[index];
+        const legDistance = leg?.distance || 0;
+        accumulatedDistance += legDistance;
+        distances.push({ cumulativeDistance: accumulatedDistance });
+    });
+    return distances;
+  }, [routeDetails, stops]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,7 +212,24 @@ export default function NaviSafeApp() {
           setIsProcessingSpot(false);
         }
     } else if (isRoutePlanned) {
-      setStopToAdd(latlng);
+      toast({
+        title: 'Finding location...',
+        description: 'Getting details for the selected stop.',
+      });
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
+        const data = await response.json();
+        const name = data.display_name || `Stop at ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
+        setStopToAdd({ lat: latlng.lat, lng: latlng.lng, name });
+      } catch (error) {
+        toast({
+            variant: 'destructive',
+            title: 'Could not get location name',
+            description: 'Using coordinates as the name.',
+        });
+        const name = `Stop at ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
+        setStopToAdd({ lat: latlng.lat, lng: latlng.lng, name });
+      }
     }
   };
   
@@ -401,6 +431,9 @@ export default function NaviSafeApp() {
               Do you want to add this location as a stop to your route? Adding a stop will disable alternative routes.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="font-medium text-foreground -mt-2 mb-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-md text-sm">
+            {stopToAdd?.name}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleAddStopConfirm}>Add Stop</AlertDialogAction>
@@ -701,13 +734,23 @@ export default function NaviSafeApp() {
                   </div>
                   {stops.length > 0 && (
                     <div className="space-y-2 pt-2 border-t border-blue-200 dark:border-blue-800/50">
+                      <h4 className="font-semibold text-sm text-blue-800 dark:text-blue-300">Stops</h4>
                         {stops.map((stop, index) => (
                           <div key={index} className="flex items-center justify-between bg-white/50 dark:bg-black/20 p-2 rounded-md text-sm">
-                            <div className="flex items-center gap-3">
-                              <Pin className="h-5 w-5 text-blue-500" />
-                              <span className="font-medium">Stop {index + 1}</span>
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                              <Pin className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium block truncate" title={stop.name}>
+                                    {stop.name}
+                                </p>
+                                {stopDistances[index] && (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {(stopDistances[index].cumulativeDistance / 1000).toFixed(1)} km from start
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveStop(index)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={() => handleRemoveStop(index)}>
                               <X className="h-4 w-4 text-red-500" />
                             </Button>
                           </div>
