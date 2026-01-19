@@ -49,6 +49,12 @@ const MapComponent = ({
   const blackSpotsLayer = useRef<L.LayerGroup | null>(null);
   const userLocationMarker = useRef<L.Marker | null>(null);
 
+  // Use a ref to hold the latest onMapClick callback to prevent stale closures
+  const onMapClickRef = useRef(onMapClick);
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  });
+
   // Initialize map
   useEffect(() => {
     if (leafletMap.current === null && mapRef.current) {
@@ -65,7 +71,8 @@ const MapComponent = ({
       blackSpotsLayer.current = L.layerGroup().addTo(leafletMap.current);
 
       leafletMap.current.on('click', (e) => {
-        onMapClick(e.latlng);
+        // Always call the latest version of the callback
+        onMapClickRef.current(e.latlng);
       });
     }
     
