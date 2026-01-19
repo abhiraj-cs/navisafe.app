@@ -55,7 +55,7 @@ Please drive with extra caution. This route passes near {{blackSpots.length}} kn
 
 Here's what to look out for:
 {{#each blackSpots}}
-- A **{{risk_level}} risk zone** with a history of: *{{accident_history}}*. Be extra vigilant here.
+• A **{{risk_level}} risk zone** with a history of: *{{accident_history}}*. Be extra vigilant here.
 {{/each}}
 
 Stay alert, adjust your speed accordingly, and have a safe trip.
