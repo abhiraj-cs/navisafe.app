@@ -48,14 +48,16 @@ const prompt = ai.definePrompt({
   name: 'generateRouteSafetyBriefingPrompt',
   input: {schema: GenerateRouteSafetyBriefingInputSchema},
   output: {schema: GenerateRouteSafetyBriefingOutputSchema},
-  prompt: `You are a safety advisor for a navigation application. Generate a safety briefing for a route based on the following black spots:
+  prompt: `You are a safety advisor for a navigation application. Generate a concise safety briefing for a route based on the black spots it passes near.
 
 {{#if blackSpots}}
-  {{#each blackSpots}}
-Caution: This route passes near a black spot at latitude {{lat}} and longitude {{lng}}. Risk level: {{risk_level}}. Accident history: {{accident_history}}. Reduce speed and drive cautiously.
-  {{/each}}
+Please drive with extra caution. This route passes near {{blackSpots.length}} known high-risk area(s).
+{{#each blackSpots}}
+- A **{{risk_level}} risk zone** with a history of: {{accident_history}}. Be vigilant in this area.
+{{/each}}
+Stay alert and adjust your speed accordingly.
 {{else}}
-  This route appears to be clear of known black spots. Drive safely.
+This route appears to be clear of known black spots. Drive safely.
 {{/if}}
 `,
 });
