@@ -34,6 +34,7 @@ import {
   Clock,
   Milestone,
   Play,
+  X,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -125,6 +126,19 @@ export default function NaviSafeApp() {
       description: 'Centering map on your starting location.',
     });
      setTimeout(() => setStartNavigation(false), 500);
+  };
+  
+  const handleCancelRoute = () => {
+    setActiveRoute({ start: '', end: '' });
+    setStartInput('');
+    setEndInput('');
+    setIsRoutePlanned(false);
+    setSafetyBriefing(null);
+    setRouteDetails(null);
+    toast({
+      title: 'Route Cleared',
+      description: 'The planned route has been removed.',
+    });
   };
 
   const handleMapClick = async (latlng: { lat: number; lng: number }) => {
@@ -559,13 +573,23 @@ export default function NaviSafeApp() {
                       <p className="text-xs text-slate-600 dark:text-slate-400">Est. Time</p>
                     </div>
                   </div>
-                   <Button
-                    onClick={handleStartNavigation}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    <Play className="mr-2 h-4 w-4" />
-                    Start Navigation
-                  </Button>
+                   <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={handleStartNavigation}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <Play className="mr-2 h-4 w-4" />
+                      Start
+                    </Button>
+                     <Button
+                        variant="outline"
+                        onClick={handleCancelRoute}
+                        className="w-full"
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Cancel
+                      </Button>
+                  </div>
                 </CardContent>
               </Card>
           )}
