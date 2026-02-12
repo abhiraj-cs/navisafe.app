@@ -357,26 +357,6 @@ export default function NaviSafeApp() {
     
     setSpotToConfirm(null);
   };
-  
-  const handleDeleteSpot = (spotId: string) => {
-    if (!db) return;
-    
-    const spotRef = doc(db, 'black_spots', spotId);
-    deleteDoc(spotRef)
-    .then(() => {
-        toast({
-          title: 'Spot Removed',
-          description: 'The accident-prone area has been removed from the map.',
-        });
-    })
-    .catch((serverError: any) => {
-        const permissionError = new FirestorePermissionError({
-            path: spotRef.path,
-            operation: 'delete',
-        });
-        errorEmitter.emit('permission-error', permissionError);
-    });
-  }
 
   const handleRouteDetails = (details: RouteDetails) => {
     if (details) {
@@ -823,7 +803,6 @@ export default function NaviSafeApp() {
           blackSpots={blackSpots || []}
           travelMode={travelMode}
           onMapClick={handleMapClick}
-          onDeleteSpot={handleDeleteSpot}
           onSafetyBriefing={setSafetyBriefing}
           onRouteDetails={handleRouteDetails}
           onMapError={message => {

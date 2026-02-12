@@ -52,7 +52,6 @@ type MapProps = {
   onMapError: (message: string) => void;
   onLoading: (loading: boolean) => void;
   onMapClick: (latlng: { lat: number, lng: number }) => void;
-  onDeleteSpot: (spotId: string) => void;
 };
 
 const primaryRouteStyle = { color: '#3b82f6', weight: 7, opacity: 0.9 };
@@ -71,7 +70,6 @@ const MapComponent = ({
   onMapError,
   onLoading,
   onMapClick,
-  onDeleteSpot
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -88,11 +86,6 @@ const MapComponent = ({
   const onMapClickRef = useRef(onMapClick);
   useEffect(() => {
     onMapClickRef.current = onMapClick;
-  });
-
-  const onDeleteSpotRef = useRef(onDeleteSpot);
-  useEffect(() => {
-    onDeleteSpotRef.current = onDeleteSpot;
   });
 
   // Initialize map
@@ -129,23 +122,6 @@ const MapComponent = ({
       
       leafletMap.current.on('zoomend', handleZoomEnd);
 
-      leafletMap.current.on('popupopen', (e) => {
-        const popupNode = e.popup.getElement();
-        if (!popupNode) return;
-
-        const deleteButton = popupNode.querySelector('.delete-spot-button') as HTMLButtonElement;
-        if (deleteButton) {
-          L.DomEvent.on(deleteButton, 'click', L.DomEvent.stop);
-          const spotId = deleteButton.dataset.spotId;
-          if (spotId) {
-            deleteButton.onclick = () => {
-              onDeleteSpotRef.current(spotId);
-              leafletMap.current?.closePopup();
-            };
-          }
-        }
-      });
-      
       // Initial check
       handleZoomEnd();
     }
@@ -235,7 +211,6 @@ const MapComponent = ({
           <h3 class="font-bold mb-1 ${spot.risk_level === 'High' ? 'text-red-600' : 'text-orange-600'}">⚠️ ${spot.risk_level} Risk Zone</h3>
           <p class="mb-2">${spot.accident_history}</p>
           <div class="text-xs text-slate-500 dark:text-slate-400 mb-2 border-t border-slate-200 dark:border-slate-700 pt-2">Reported by <strong>${spot.report_count}</strong> user(s).</div>
-          <button data-spot-id="${spot.id}" class="delete-spot-button w-full text-xs text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded-md transition-colors">Remove Spot</button>
         </div>
       `)
       .addTo(blackSpotsLayer.current!);
