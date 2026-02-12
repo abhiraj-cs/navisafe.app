@@ -38,6 +38,7 @@ import {
   Pin,
   LogIn,
   LogOut,
+  Route as RouteIcon,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -107,6 +108,9 @@ export default function NaviSafeApp() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [panToStart, setPanToStart] = useState(false);
 
+  const [rerouteInfo, setRerouteInfo] = useState<any | null>(null);
+  const [showReroutePopup, setShowReroutePopup] = useState(false);
+
   const [isCoordAddOpen, setIsCoordAddOpen] = useState(false);
   const [coordLat, setCoordLat] = useState('');
   const [coordLng, setCoordLng] = useState('');
@@ -146,6 +150,8 @@ export default function NaviSafeApp() {
     setIsRoutePlanned(false);
     setIsNavigating(false);
     setStops([]);
+    setRerouteInfo(null);
+    setShowReroutePopup(false);
     setActiveRoute({ start: startValue, end: endInput });
   };
   
@@ -174,6 +180,8 @@ export default function NaviSafeApp() {
     setSafetyBriefing(null);
     setRouteDetails(null);
     setStops([]);
+    setRerouteInfo(null);
+    setShowReroutePopup(false);
     toast({
       title: 'Route Cleared',
       description: 'The planned route has been removed.',
@@ -381,6 +389,15 @@ export default function NaviSafeApp() {
     } else {
       setRouteDetails(null);
       setIsRoutePlanned(false);
+    }
+  };
+
+  const handleRerouteInfo = (info: any) => {
+    if (info && info.spotsAvoided > 0) {
+      setRerouteInfo(info);
+      setShowReroutePopup(true);
+    } else {
+      setRerouteInfo(null);
     }
   };
 
@@ -613,6 +630,35 @@ export default function NaviSafeApp() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmIncrement}>
               Yes, Confirm Report
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReroutePopup} onOpenChange={setShowReroutePopup}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <RouteIcon className="h-6 w-6 text-blue-600" />
+              Safer Route Recommended
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              We&apos;ve identified a safer route for your journey. Your safety is our priority.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 text-sm text-foreground/90">
+            <p>
+              The recommended route is approximately{' '}
+              <strong>{formatDuration(rerouteInfo?.timeDifference ?? 0)} longer</strong> but it avoids{' '}
+              <strong>{rerouteInfo?.spotsAvoided} known accident zone(s)</strong>.
+            </p>
+            <p className="text-xs text-muted-foreground pt-2 border-t mt-2">
+              The safer route is selected by default. You can still choose the faster (but riskier) route by clicking on it on the map.
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowReroutePopup(false)}>
+              Got it!
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -913,6 +959,7 @@ export default function NaviSafeApp() {
           isNavigating={isNavigating}
           isAdmin={isAdmin}
           onSpotDeleteRequest={handleDeleteSpotRequest}
+          onRerouteInfo={handleRerouteInfo}
         />
         {isAddMode && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">

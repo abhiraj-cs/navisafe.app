@@ -55,6 +55,7 @@ type MapProps = {
   onMapClick: (latlng: { lat: number, lng: number }) => void;
   isAdmin: boolean;
   onSpotDeleteRequest: (spot: BlackSpot) => void;
+  onRerouteInfo: (info: any | null) => void;
 };
 
 const primaryRouteStyle = { color: '#3b82f6', weight: 7, opacity: 0.9 };
@@ -76,6 +77,7 @@ const MapComponent = ({
   onMapClick,
   isAdmin,
   onSpotDeleteRequest,
+  onRerouteInfo,
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -290,6 +292,24 @@ const MapComponent = ({
     });
   }, [blackSpots, isAdmin, onSpotDeleteRequest]);
 
+  const calculateRisk = useCallback((route: any) => {
+      const coordinates = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
+      let riskScore = 0;
+      const detectedSpots = new Set<BlackSpot>();
+
+      coordinates.forEach((point: [number, number]) => {
+        (blackSpots || []).forEach(spot => {
+          if (detectedSpots.has(spot)) return;
+          const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
+          if (dist < COLLISION_THRESHOLD) {
+            riskScore += (spot.risk_level === 'High' ? 10 : 5);
+            detectedSpots.add(spot);
+          }
+        });
+      });
+      return { riskScore, detectedSpots };
+  }, [blackSpots]);
+
   // Fetch and score routes based on start/end locations
   useEffect(() => {
     const fetchRoutes = async () => {
@@ -297,6 +317,7 @@ const MapComponent = ({
       setSelectedRouteIndex(0);
       onRouteDetails(null);
       onSafetyBriefing(null);
+      onRerouteInfo(null);
       
       if ((typeof startLocation === 'string' && !startLocation.trim()) || !endLocation.trim()) {
         if (routeLayers.current) routeLayers.current.clearLayers();
@@ -354,38 +375,45 @@ const MapComponent = ({
         if (!json.routes || !json.routes.length) {
           throw new Error("No route could be found between the locations.");
         }
-
-        const calculateRiskScore = (route: any) => {
-            const coordinates = route.geometry.coordinates.map((c: number[]) => [c[1], c[0]] as [number, number]);
-            let riskScore = 0;
-            const detectedSpots = new Set<string>();
-
-            coordinates.forEach((point: [number, number]) => {
-              (blackSpots || []).forEach(spot => {
-                if (detectedSpots.has(spot.id)) return;
-                const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
-                if (dist < COLLISION_THRESHOLD) {
-                  riskScore += (spot.risk_level === 'High' ? 10 : 5);
-                  detectedSpots.add(spot.id);
-                }
-              });
-            });
-            return riskScore;
-        }
         
         if (alternativesEnabled) {
-          const routesWithScores = json.routes.map((route: any) => ({
-            ...route, 
-            riskScore: calculateRiskScore(route)
-          }));
-          const sortedRoutes = routesWithScores.sort((a: any, b: any) => {
-            if (a.riskScore !== b.riskScore) return a.riskScore - b.riskScore;
-            return a.duration - b.duration;
-          });
-          setRoutes(sortedRoutes);
+            const routesWithInfo = json.routes.map((route: any, index: number) => {
+                const { riskScore, detectedSpots } = calculateRisk(route);
+                return {
+                ...route,
+                id: index,
+                riskScore,
+                detectedSpots,
+                };
+            });
+
+            const sortedBySafety = [...routesWithInfo].sort((a: any, b: any) => {
+                if (a.riskScore !== b.riskScore) return a.riskScore - b.riskScore;
+                return a.duration - b.duration;
+            });
+
+            const sortedByTime = [...routesWithInfo].sort((a: any, b: any) => a.duration - b.duration);
+            
+            const safestRoute = sortedBySafety[0];
+            const fastestRoute = sortedByTime[0];
+
+            if (safestRoute && fastestRoute && safestRoute.id !== fastestRoute.id && safestRoute.riskScore < fastestRoute.riskScore) {
+                const timeDifference = safestRoute.duration - fastestRoute.duration;
+                const spotsDifference = fastestRoute.detectedSpots.size - safestRoute.detectedSpots.size;
+                
+                onRerouteInfo({
+                    timeDifference: timeDifference,
+                    spotsAvoided: spotsDifference,
+                });
+            } else {
+                onRerouteInfo(null);
+            }
+            setRoutes(sortedBySafety);
         } else {
-          const routeWithScore = { ...json.routes[0], riskScore: calculateRiskScore(json.routes[0]) };
-          setRoutes([routeWithScore]);
+            const { riskScore, detectedSpots } = calculateRisk(json.routes[0]);
+            const routeWithScore = { ...json.routes[0], id: 0, riskScore, detectedSpots };
+            setRoutes([routeWithScore]);
+            onRerouteInfo(null);
         }
 
         setSelectedRouteIndex(0);
@@ -401,7 +429,7 @@ const MapComponent = ({
 
     fetchRoutes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startLocation, endLocation, travelMode, blackSpots, stops]);
+  }, [startLocation, endLocation, travelMode, blackSpots, stops, calculateRisk]);
 
   // Draw/update routes when they or selection changes
   useEffect(() => {
