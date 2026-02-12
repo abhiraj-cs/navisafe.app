@@ -180,52 +180,56 @@ export default function NaviSafeApp() {
     });
   };
 
+  const processNewSpotAddition = async (latlng: { lat: number, lng: number }) => {
+    if (isProcessingSpot) return;
+    setIsProcessingSpot(true);
+    toast({
+      title: 'Verifying Location...',
+      description: 'Snapping to the nearest road and checking for nearby spots.',
+    });
+
+    try {
+      // 1. Snap to nearest road using OSRM
+      const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${latlng.lng},${latlng.lat}`;
+      const osrmRes = await fetch(osrmUrl);
+      const osrmJson = await osrmRes.json();
+
+      if (osrmJson.code !== 'Ok' || !osrmJson.waypoints || osrmJson.waypoints.length === 0) {
+        throw new Error('Could not find a road near this location.');
+      }
+      
+      const snappedCoords = osrmJson.waypoints[0].location;
+      const snappedLat = snappedCoords[1];
+      const snappedLng = snappedCoords[0];
+
+      // 2. Check for nearby existing black spots
+      const nearbySpot = blackSpots?.find(spot => {
+        const distance = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: snappedLat, lon: snappedLng });
+        return distance < NEARBY_THRESHOLD;
+      });
+
+      if (nearbySpot) {
+        // 3a. If nearby spot found, ask for confirmation to increment
+        setSpotToConfirm(nearbySpot);
+      } else {
+        // 3b. If no nearby spot, open the 'add new' dialog
+        setNewSpotInfo({ lat: snappedLat, lng: snappedLng });
+      }
+
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could Not Add Spot',
+        description: error.message || 'An error occurred while processing the location.',
+      });
+    } finally {
+      setIsProcessingSpot(false);
+    }
+  };
+
   const handleMapClick = async (latlng: { lat: number; lng: number }) => {
     if (isAddMode) {
-       if (isProcessingSpot) return;
-        setIsProcessingSpot(true);
-        toast({
-          title: 'Verifying Location...',
-          description: 'Snapping to the nearest road and checking for nearby spots.',
-        });
-
-        try {
-          // 1. Snap to nearest road using OSRM
-          const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${latlng.lng},${latlng.lat}`;
-          const osrmRes = await fetch(osrmUrl);
-          const osrmJson = await osrmRes.json();
-
-          if (osrmJson.code !== 'Ok' || !osrmJson.waypoints || osrmJson.waypoints.length === 0) {
-            throw new Error('Could not find a road near this location.');
-          }
-          
-          const snappedCoords = osrmJson.waypoints[0].location;
-          const snappedLat = snappedCoords[1];
-          const snappedLng = snappedCoords[0];
-
-          // 2. Check for nearby existing black spots
-          const nearbySpot = blackSpots?.find(spot => {
-            const distance = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: snappedLat, lon: snappedLng });
-            return distance < NEARBY_THRESHOLD;
-          });
-
-          if (nearbySpot) {
-            // 3a. If nearby spot found, ask for confirmation to increment
-            setSpotToConfirm(nearbySpot);
-          } else {
-            // 3b. If no nearby spot, open the 'add new' dialog
-            setNewSpotInfo({ lat: snappedLat, lng: snappedLng });
-          }
-
-        } catch (error: any) {
-          toast({
-            variant: 'destructive',
-            title: 'Could Not Add Spot',
-            description: error.message || 'An error occurred while processing the location.',
-          });
-        } finally {
-          setIsProcessingSpot(false);
-        }
+      processNewSpotAddition(latlng);
     } else if (isRoutePlanned) {
       toast({
         title: 'Finding location...',
@@ -261,10 +265,7 @@ export default function NaviSafeApp() {
       return;
     }
 
-    // A bit of a hack: set isAddMode to true so handleMapClick works, then reset it
-    setIsAddMode(true);
-    handleMapClick({ lat, lng });
-    setIsAddMode(false);
+    processNewSpotAddition({ lat, lng });
 
     setIsCoordAddOpen(false); // Close the dialog
   };
