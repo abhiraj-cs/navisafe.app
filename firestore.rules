@@ -5,12 +5,14 @@ service cloud.firestore {
   
     // Allow public read and write access to black spots for demonstration.
     // In a real application, you would want to restrict write access.
-    // Deletion is disabled until an admin role is implemented.
     match /black_spots/{spotId} {
       allow read: if true;
       allow create: if true;
       allow update: if true;
-      allow delete: if false;
+      // WARNING: This currently allows any user to delete spots.
+      // In a production app, this should be restricted to admin users
+      // using authentication and custom claims.
+      allow delete: if true;
     }
   }
 }

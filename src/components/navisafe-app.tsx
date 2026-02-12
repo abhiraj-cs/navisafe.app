@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,8 @@ import {
   X,
   TextCursorInput,
   Pin,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -47,6 +49,8 @@ import { useFirebase } from '@/firebase';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { haversineDistance } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
+import Link from 'next/link';
 
 // Dynamically import the map to ensure it's client-side only
 const MapComponent = dynamic(() => import('@/components/map'), {
@@ -70,6 +74,8 @@ type StopLocation = { lat: number; lng: number; name: string };
 
 export default function NaviSafeApp() {
   const { db } = useFirebase();
+  const { isAdmin, logout } = useAuth();
+  
   const blackSpotsQuery = useMemo(() => (db ? collection(db, 'black_spots') : null), [db]);
   const { data: blackSpots, loading: blackSpotsLoading } = useCollection<BlackSpot>(
     blackSpotsQuery
@@ -94,6 +100,7 @@ export default function NaviSafeApp() {
   const [newSpotInfo, setNewSpotInfo] = useState<NewSpotInfo>(null);
   const [spotToConfirm, setSpotToConfirm] = useState<SpotToConfirm>(null);
   const [isProcessingSpot, setIsProcessingSpot] = useState(false);
+  const [spotToDelete, setSpotToDelete] = useState<BlackSpot | null>(null);
 
   const [newSpotRisk, setNewSpotRisk] = useState<'High' | 'Medium'>('Medium');
   const [newSpotDescription, setNewSpotDescription] = useState('');
@@ -386,6 +393,32 @@ export default function NaviSafeApp() {
     });
   };
 
+  const handleDeleteSpotRequest = useCallback((spot: BlackSpot) => {
+    setSpotToDelete(spot);
+  }, []);
+
+  const confirmDeleteSpot = () => {
+    if (!spotToDelete || !db) return;
+
+    const spotRef = doc(db, 'black_spots', spotToDelete.id);
+    deleteDoc(spotRef)
+      .then(() => {
+        toast({
+          title: 'Spot Removed',
+          description: 'The accident-prone area has been removed from the map.',
+        });
+      })
+      .catch((serverError: any) => {
+        const permissionError = new FirestorePermissionError({
+          path: spotRef.path,
+          operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+    
+    setSpotToDelete(null);
+  };
+
   const isHighRisk =
     safetyBriefing &&
     (safetyBriefing.toLowerCase().includes('caution') ||
@@ -400,6 +433,30 @@ export default function NaviSafeApp() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-screen bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans">
+      <AlertDialog
+        open={!!spotToDelete}
+        onOpenChange={() => setSpotToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the
+              accident-prone area.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSpot}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog
         open={!!stopToAdd}
         onOpenChange={() => setStopToAdd(null)}
@@ -567,6 +624,19 @@ export default function NaviSafeApp() {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            {isAdmin ? (
+              <Button variant="ghost" size="icon" onClick={logout} title="Logout">
+                <LogOut className="h-5 w-5" />
+                <span className="sr-only">Logout</span>
+              </Button>
+            ) : (
+              <Button asChild variant="ghost" size="icon" title="Admin Login">
+                <Link href="/login">
+                  <LogIn className="h-5 w-5" />
+                  <span className="sr-only">Admin Login</span>
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -818,6 +888,8 @@ export default function NaviSafeApp() {
           onLoading={setIsSearching}
           locateUser={locateUser}
           startNavigation={startNavigation}
+          isAdmin={isAdmin}
+          onSpotDeleteRequest={handleDeleteSpotRequest}
         />
         {isAddMode && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">

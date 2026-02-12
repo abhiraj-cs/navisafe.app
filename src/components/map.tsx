@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
 import 'leaflet-defaulticon-compatibility';
@@ -52,6 +52,8 @@ type MapProps = {
   onMapError: (message: string) => void;
   onLoading: (loading: boolean) => void;
   onMapClick: (latlng: { lat: number, lng: number }) => void;
+  isAdmin: boolean;
+  onSpotDeleteRequest: (spot: BlackSpot) => void;
 };
 
 const primaryRouteStyle = { color: '#3b82f6', weight: 7, opacity: 0.9 };
@@ -70,6 +72,8 @@ const MapComponent = ({
   onMapError,
   onLoading,
   onMapClick,
+  isAdmin,
+  onSpotDeleteRequest,
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -205,17 +209,32 @@ const MapComponent = ({
     blackSpots.forEach((spot) => {
       const icon = createWarningIcon(spot.risk_level, spot.report_count);
 
-      L.marker([spot.lat, spot.lng], { icon })
-      .bindPopup(`
+      const popupContent = `
         <div class="p-2 text-sm max-w-xs">
           <h3 class="font-bold mb-1 ${spot.risk_level === 'High' ? 'text-red-600' : 'text-orange-600'}">⚠️ ${spot.risk_level} Risk Zone</h3>
           <p class="mb-2">${spot.accident_history}</p>
           <div class="text-xs text-slate-500 dark:text-slate-400 mb-2 border-t border-slate-200 dark:border-slate-700 pt-2">Reported by <strong>${spot.report_count}</strong> user(s).</div>
+          ${isAdmin ? `<div id="delete-container-${spot.id}" class="mt-2"><button class="w-full text-center text-xs font-medium text-red-500 hover:text-red-700 p-2 rounded bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 transition-colors">Remove Spot</button></div>` : ''}
         </div>
-      `)
-      .addTo(blackSpotsLayer.current!);
+      `;
+
+      const marker = L.marker([spot.lat, spot.lng], { icon })
+        .bindPopup(popupContent, { minWidth: 200 })
+        .addTo(blackSpotsLayer.current!);
+
+      marker.on('popupopen', (e) => {
+        if (isAdmin) {
+          const btn = e.popup.getElement()?.querySelector(`#delete-container-${spot.id} button`);
+          if (btn) {
+            btn.addEventListener('click', () => {
+              onSpotDeleteRequest(spot);
+              leafletMap.current?.closePopup();
+            });
+          }
+        }
+      });
     });
-  }, [blackSpots]);
+  }, [blackSpots, isAdmin, onSpotDeleteRequest]);
 
   // Fetch and score routes based on start/end locations
   useEffect(() => {
