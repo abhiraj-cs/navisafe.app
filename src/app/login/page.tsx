@@ -47,9 +47,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex items-center justify-center min-h-screen bg-gradient-to-br from-sky-200 via-rose-200 to-amber-200 dark:from-sky-900 dark:via-rose-900 dark:to-amber-900 animated-gradient">
-      <div className="absolute top-6 right-6 flex items-center gap-2 text-slate-800 dark:text-slate-200">
-        <Navigation className="h-7 w-7 text-blue-500" />
+    <div className="relative flex items-center justify-center min-h-screen dark-water-animation">
+      <div className="absolute top-6 right-6 flex items-center gap-2 text-slate-200">
+        <Navigation className="h-7 w-7 text-blue-400" />
         <h1 className="text-xl font-bold">NaviSafe</h1>
       </div>
 

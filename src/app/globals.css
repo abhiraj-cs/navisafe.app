@@ -86,20 +86,33 @@
 }
 
 @layer utilities {
-  .animated-gradient {
-    background-size: 400% 400%;
-    animation: gradient-animation 10s ease infinite;
+  .dark-water-animation {
+    background-color: #020b14; /* Dark blue base */
+    background-image:
+      radial-gradient(ellipse at 80% 20%, hsl(210, 50%, 20%), transparent),
+      radial-gradient(ellipse at 10% 90%, hsl(220, 40%, 15%), transparent),
+      linear-gradient(125deg, transparent, hsl(240, 60%, 5%, 0.7));
+    background-size: 250% 250%, 300% 300%, 150% 150%;
+    background-position: 0% 0%, 100% 100%, 0% 0%;
+    background-repeat: no-repeat;
+    animation: move-water 15s ease-in-out infinite;
   }
 
-  @keyframes gradient-animation {
+  @keyframes move-water {
     0% {
-      background-position: 0% 50%;
+      background-position: 0% 0%, 100% 100%, 0% 0%;
+    }
+    25% {
+      background-position: 50% 50%, 50% 50%, 25% 50%;
     }
     50% {
-      background-position: 100% 50%;
+      background-position: 100% 0%, 0% 100%, 50% 100%;
+    }
+    75% {
+      background-position: 50% 50%, 50% 50%, 75% 50%;
     }
     100% {
-      background-position: 0% 50%;
+      background-position: 0% 0%, 100% 100%, 0% 0%;
     }
   }
 }
