@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { LocationInput } from '@/components/location-input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -51,6 +51,7 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { haversineDistance } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import Link from 'next/link';
+import { Input } from './ui/input';
 
 // Dynamically import the map to ensure it's client-side only
 const MapComponent = dynamic(() => import('@/components/map'), {
@@ -725,14 +726,14 @@ export default function NaviSafeApp() {
                   </Button>
                 </div>
                 <div className="space-y-3">
-                  <div className="relative flex items-center gap-2">
-                    <div className="absolute left-3 top-2.5 h-4 w-4 rounded-full border-2 border-slate-400 dark:border-slate-600" />
-                    <Input
-                      className="pl-9 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500"
+                  <div className="flex items-center gap-2">
+                    <LocationInput
+                      icon={<div className="h-4 w-4 rounded-full border-2 border-slate-400 dark:border-slate-600" />}
                       placeholder="Start Location"
                       value={startInput}
-                      onChange={e => setStartInput(e.target.value)}
+                      onValueChange={setStartInput}
                       disabled={isSearching}
+                      className="flex-1"
                     />
                      <Button
                         type="button"
@@ -747,16 +748,13 @@ export default function NaviSafeApp() {
                       </Button>
                   </div>
 
-                  <div className="relative">
-                    <MapIcon className="absolute left-3 top-2.5 h-4 w-4 text-blue-500" />
-                    <Input
-                      className="pl-9 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus-visible:ring-blue-500"
-                      placeholder="Destination"
-                      value={endInput}
-                      onChange={e => setEndInput(e.target.value)}
-                      disabled={isSearching}
-                    />
-                  </div>
+                  <LocationInput
+                    icon={<MapIcon className="h-4 w-4 text-blue-500" />}
+                    placeholder="Destination"
+                    value={endInput}
+                    onValueChange={setEndInput}
+                    disabled={isSearching}
+                  />
                 </div>
 
                 <Button
