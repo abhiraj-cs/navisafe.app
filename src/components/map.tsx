@@ -46,7 +46,8 @@ type MapProps = {
   blackSpots: BlackSpot[];
   travelMode: TravelMode;
   locateUser: boolean;
-  startNavigation: boolean;
+  panToStart: boolean;
+  isNavigating: boolean;
   onSafetyBriefing: (briefing: string | null) => void;
   onRouteDetails: (details: any | null) => void;
   onMapError: (message: string) => void;
@@ -66,7 +67,8 @@ const MapComponent = ({
   blackSpots,
   travelMode,
   locateUser,
-  startNavigation,
+  panToStart,
+  isNavigating,
   onSafetyBriefing, 
   onRouteDetails,
   onMapError,
@@ -140,7 +142,7 @@ const MapComponent = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle locating the user
+  // Handle locating the user (one-shot)
   useEffect(() => {
     if (locateUser && leafletMap.current) {
       leafletMap.current.locate({ setView: true, maxZoom: 16 });
@@ -169,13 +171,65 @@ const MapComponent = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locateUser]);
 
-  // Handle starting navigation
+  // Handle panning to the start of the route
   useEffect(() => {
-    if (startNavigation && leafletMap.current && startMarker.current) {
+    if (panToStart && leafletMap.current && startMarker.current) {
       const startLatLng = startMarker.current.getLatLng();
       leafletMap.current.setView(startLatLng, 16, { animate: true });
     }
-  }, [startNavigation]);
+  }, [panToStart]);
+
+  // Handle real-time navigation tracking
+  useEffect(() => {
+    const map = leafletMap.current;
+    if (!map) return;
+
+    const onNavLocationFound = (e: L.LocationEvent) => {
+        const userLocationIcon = L.divIcon({
+            html: `
+                <div class="relative flex items-center justify-center">
+                    <div class="absolute w-6 h-6 bg-blue-500 rounded-full animate-ping opacity-75"></div>
+                    <div class="relative w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-md"></div>
+                </div>
+            `,
+            className: '',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+        });
+
+        if (userLocationMarker.current) {
+            userLocationMarker.current.setLatLng(e.latlng);
+        } else {
+            userLocationMarker.current = L.marker(e.latlng, { icon: userLocationIcon }).addTo(map);
+        }
+    };
+
+    const onNavLocationError = (e: L.ErrorEvent) => {
+        onMapError("Navigation failed: Could not get GPS location or permission denied.");
+    };
+
+    if (isNavigating) {
+        map.on('locationfound', onNavLocationFound);
+        map.on('locationerror', onNavLocationError);
+        map.locate({ watch: true, setView: true, maxZoom: 18, enableHighAccuracy: true });
+    } else {
+        map.stopLocate();
+        map.off('locationfound', onNavLocationFound);
+        map.off('locationerror', onNavLocationError);
+        if (userLocationMarker.current) {
+            map.removeLayer(userLocationMarker.current);
+            userLocationMarker.current = null;
+        }
+    }
+
+    return () => {
+        if (map) {
+            map.stopLocate();
+            map.off('locationfound', onNavLocationFound);
+            map.off('locationerror', onNavLocationError);
+        }
+    };
+  }, [isNavigating, onMapError]);
   
   // Update stop markers
   useEffect(() => {

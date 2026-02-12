@@ -33,7 +33,6 @@ import {
   Bike,
   Clock,
   Milestone,
-  Play,
   X,
   TextCursorInput,
   Pin,
@@ -105,7 +104,8 @@ export default function NaviSafeApp() {
   const [newSpotRisk, setNewSpotRisk] = useState<'High' | 'Medium'>('Medium');
   const [newSpotDescription, setNewSpotDescription] = useState('');
   const [locateUser, setLocateUser] = useState(false);
-  const [startNavigation, setStartNavigation] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [panToStart, setPanToStart] = useState(false);
 
   const [isCoordAddOpen, setIsCoordAddOpen] = useState(false);
   const [coordLat, setCoordLat] = useState('');
@@ -144,18 +144,25 @@ export default function NaviSafeApp() {
     setSafetyBriefing(null);
     setRouteDetails(null);
     setIsRoutePlanned(false);
-    setStartNavigation(false);
+    setIsNavigating(false);
     setStops([]);
     setActiveRoute({ start: startValue, end: endInput });
   };
   
-  const handleStartNavigation = () => {
-    setStartNavigation(true);
-    toast({
-      title: 'Navigation Started',
-      description: 'Centering map on your starting location.',
-    });
-     setTimeout(() => setStartNavigation(false), 500);
+  const handleToggleNavigation = () => {
+    if (!isNavigating) {
+      setPanToStart(true);
+      setTimeout(() => setPanToStart(false), 500);
+      toast({
+        title: 'Navigation Started',
+        description: 'Tracking your location.',
+      });
+    } else {
+      toast({
+        title: 'Navigation Stopped',
+      });
+    }
+    setIsNavigating(!isNavigating);
   };
   
   const handleCancelRoute = () => {
@@ -163,6 +170,7 @@ export default function NaviSafeApp() {
     setStartInput('');
     setEndInput('');
     setIsRoutePlanned(false);
+    setIsNavigating(false);
     setSafetyBriefing(null);
     setRouteDetails(null);
     setStops([]);
@@ -814,11 +822,19 @@ export default function NaviSafeApp() {
                   )}
                    <div className="grid grid-cols-2 gap-2">
                     <Button
-                      onClick={handleStartNavigation}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      onClick={handleToggleNavigation}
+                      className={`w-full text-white ${
+                        isNavigating
+                          ? 'bg-red-600 hover:bg-red-700'
+                          : 'bg-green-600 hover:bg-green-700'
+                      }`}
                     >
-                      <Play className="mr-2 h-4 w-4" />
-                      Start
+                      {isNavigating ? (
+                        <X className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Navigation className="mr-2 h-4 w-4" />
+                      )}
+                      {isNavigating ? 'Stop' : 'Navigate'}
                     </Button>
                      <Button
                         variant="outline"
@@ -892,7 +908,8 @@ export default function NaviSafeApp() {
           }}
           onLoading={setIsSearching}
           locateUser={locateUser}
-          startNavigation={startNavigation}
+          panToStart={panToStart}
+          isNavigating={isNavigating}
           isAdmin={isAdmin}
           onSpotDeleteRequest={handleDeleteSpotRequest}
         />
