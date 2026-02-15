@@ -484,6 +484,36 @@ export default function NaviSafeApp() {
     return `<1 min`;
   };
 
+  const HeaderContent = () => (
+    <div className="p-4 bg-slate-900 dark:bg-black text-white shadow-md flex justify-between items-center">
+      <div className="flex items-center gap-2">
+        <Navigation className="h-6 w-6 text-blue-400" />
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">NaviSafe</h1>
+          <p className="text-slate-400 text-xs">
+            AI-Powered Safety Navigation
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        {isLoggedIn ? (
+          <Button variant="ghost" size="icon" onClick={logout} title="Logout">
+            <LogOut className="h-5 w-5" />
+            <span className="sr-only">Logout</span>
+          </Button>
+        ) : (
+          <Button asChild variant="ghost" size="icon" title="Login">
+            <Link href="/login">
+              <LogIn className="h-5 w-5" />
+              <span className="sr-only">Login</span>
+            </Link>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col-reverse md:flex-row h-screen w-screen bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans">
       <AlertDialog
@@ -694,32 +724,8 @@ export default function NaviSafeApp() {
       {/* SIDEBAR CONTROL PANEL */}
       <div className="w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col h-[40vh] md:h-full">
         {/* Header */}
-        <div className="p-4 bg-slate-900 dark:bg-black text-white shadow-md flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Navigation className="h-6 w-6 text-blue-400" />
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">NaviSafe</h1>
-              <p className="text-slate-400 text-xs">
-                AI-Powered Safety Navigation
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            {isLoggedIn ? (
-              <Button variant="ghost" size="icon" onClick={logout} title="Logout">
-                <LogOut className="h-5 w-5" />
-                <span className="sr-only">Logout</span>
-              </Button>
-            ) : (
-              <Button asChild variant="ghost" size="icon" title="Login">
-                <Link href="/login">
-                  <LogIn className="h-5 w-5" />
-                  <span className="sr-only">Login</span>
-                </Link>
-              </Button>
-            )}
-          </div>
+        <div className="hidden md:block">
+          <HeaderContent />
         </div>
 
         {/* Scrollable Content Area */}
@@ -958,6 +964,9 @@ export default function NaviSafeApp() {
           isAddMode ? 'cursor-crosshair' : (isRoutePlanned ? 'cursor-copy' : '')
         }`}
       >
+        <div className="absolute top-0 left-0 right-0 z-10 md:hidden">
+          <HeaderContent />
+        </div>
         <MapComponent
           startLocation={activeRoute.start}
           endLocation={activeRoute.end}
