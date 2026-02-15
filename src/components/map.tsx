@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
 import 'leaflet-defaulticon-compatibility';
@@ -38,6 +38,12 @@ const createWarningIcon = (riskLevel: 'High' | 'Medium', reportCount: number) =>
   });
 };
 
+type NavigationUpdateData = {
+  speed: number;
+  remainingTime: number;
+  remainingDistance: number;
+};
+
 
 type MapProps = {
   startLocation: string | { lat: number; lng: number };
@@ -56,6 +62,7 @@ type MapProps = {
   isAdmin: boolean;
   onSpotDeleteRequest: (spot: BlackSpot) => void;
   onRerouteInfo: (info: any | null) => void;
+  onNavigationUpdate: (data: NavigationUpdateData | null) => void;
 };
 
 const primaryRouteStyle = { color: '#3b82f6', weight: 7, opacity: 0.9 };
@@ -78,6 +85,7 @@ const MapComponent = ({
   isAdmin,
   onSpotDeleteRequest,
   onRerouteInfo,
+  onNavigationUpdate,
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -87,13 +95,30 @@ const MapComponent = ({
   const blackSpotsLayer = useRef<L.LayerGroup | null>(null);
   const stopsLayer = useRef<L.LayerGroup | null>(null);
   const userLocationMarker = useRef<L.Marker | null>(null);
+  const lastPassedIndex = useRef(0);
 
   const [routes, setRoutes] = useState<any[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState<number>(0);
+  
+  const selectedRoute = useMemo(() => routes[selectedRouteIndex], [routes, selectedRouteIndex]);
+  const totalHaversineDistance = useMemo(() => {
+    if (!selectedRoute) return 0;
+    const routeCoords = selectedRoute.geometry.coordinates.map((c: number[]) => ({ lat: c[1], lon: c[0] }));
+    let totalDist = 0;
+    for (let i = 0; i < routeCoords.length - 1; i++) {
+        totalDist += haversineDistance(routeCoords[i], routeCoords[i+1]);
+    }
+    return totalDist;
+  }, [selectedRoute]);
 
   const onMapClickRef = useRef(onMapClick);
   useEffect(() => {
     onMapClickRef.current = onMapClick;
+  });
+  
+  const onNavigationUpdateRef = useRef(onNavigationUpdate);
+  useEffect(() => {
+    onNavigationUpdateRef.current = onNavigationUpdate;
   });
 
   // Initialize map
@@ -185,6 +210,12 @@ const MapComponent = ({
   useEffect(() => {
     const map = leafletMap.current;
     if (!map) return;
+    
+    const selectedRouteRef = { current: selectedRoute };
+    selectedRouteRef.current = selectedRoute;
+
+    const totalHaversineDistanceRef = { current: totalHaversineDistance };
+    totalHaversineDistanceRef.current = totalHaversineDistance;
 
     const onNavLocationFound = (e: L.LocationEvent) => {
         const userLocationIcon = L.divIcon({
@@ -204,13 +235,68 @@ const MapComponent = ({
         } else {
             userLocationMarker.current = L.marker(e.latlng, { icon: userLocationIcon }).addTo(map);
         }
+
+        // --- Navigation Data Calculation ---
+        const currentRoute = selectedRouteRef.current;
+        if (!currentRoute) {
+            onNavigationUpdateRef.current(null);
+            return;
+        }
+
+        const userLatLng = e.latlng;
+        const currentSpeedMs = e.speed || 0; // meters/second
+        const routeCoords = currentRoute.geometry.coordinates.map((c: number[]) => ({ lat: c[1], lon: c[0] }));
+
+        // Find the closest point on the route from our last known position
+        const SEARCH_WINDOW = 30;
+        const searchStart = lastPassedIndex.current;
+        const searchEnd = Math.min(searchStart + SEARCH_WINDOW, routeCoords.length);
+
+        let newClosestPointIndex = -1;
+        let minDistance = Infinity;
+
+        for (let i = searchStart; i < searchEnd; i++) {
+            const dist = haversineDistance({ lat: userLatLng.lat, lon: userLatLng.lng }, routeCoords[i]);
+            if (dist < minDistance) {
+                minDistance = dist;
+                newClosestPointIndex = i;
+            }
+        }
+        
+        if (newClosestPointIndex !== -1) {
+            lastPassedIndex.current = newClosestPointIndex;
+        }
+        const closestPointIndex = lastPassedIndex.current;
+
+        // Calculate remaining haversine distance
+        let remainingHaversineDistance = 0;
+        for (let i = closestPointIndex; i < routeCoords.length - 1; i++) {
+            remainingHaversineDistance += haversineDistance(routeCoords[i], routeCoords[i+1]);
+        }
+
+        const totalRouteDistance = currentRoute.distance;
+        const remainingRouteDistance = totalHaversineDistanceRef.current > 0 
+            ? (remainingHaversineDistance / totalHaversineDistanceRef.current) * totalRouteDistance 
+            : 0;
+
+        const avgSpeed = totalRouteDistance / currentRoute.duration;
+        const speedForCalc = currentSpeedMs > 1 ? currentSpeedMs : avgSpeed;
+        const remainingTime = speedForCalc > 0 ? remainingRouteDistance / speedForCalc : 0;
+        
+        onNavigationUpdateRef.current({
+            speed: currentSpeedMs * 3.6, // km/h
+            remainingTime, // seconds
+            remainingDistance: remainingRouteDistance, // meters
+        });
     };
 
     const onNavLocationError = (e: L.ErrorEvent) => {
         onMapError("Navigation failed: Could not get GPS location or permission denied.");
+        onNavigationUpdateRef.current(null);
     };
 
     if (isNavigating) {
+        lastPassedIndex.current = 0; // Reset on navigation start
         map.on('locationfound', onNavLocationFound);
         map.on('locationerror', onNavLocationError);
         map.locate({ watch: true, setView: true, maxZoom: 18, enableHighAccuracy: true });
@@ -222,6 +308,7 @@ const MapComponent = ({
             map.removeLayer(userLocationMarker.current);
             userLocationMarker.current = null;
         }
+        onNavigationUpdateRef.current(null);
     }
 
     return () => {
@@ -231,7 +318,8 @@ const MapComponent = ({
             map.off('locationerror', onNavLocationError);
         }
     };
-  }, [isNavigating, onMapError]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNavigating, onMapError, selectedRoute, totalHaversineDistance]);
   
   // Update stop markers
   useEffect(() => {
@@ -433,6 +521,7 @@ const MapComponent = ({
 
   // Draw/update routes when they or selection changes
   useEffect(() => {
+    lastPassedIndex.current = 0; // Reset progress when route changes
     if (!leafletMap.current || !routeLayers.current) return;
 
     routeLayers.current.clearLayers();
@@ -441,7 +530,8 @@ const MapComponent = ({
       onRouteDetails(null);
       return;
     }
-
+    
+    // Find the selected route based on its original ID after sorting
     const selectedRoute = routes[selectedRouteIndex];
 
     // Draw alternative routes first, so the selected one is on top and more prominent
@@ -475,17 +565,7 @@ const MapComponent = ({
       onSafetyBriefing(null); // Clear previous briefing
       onLoading(true);
       try {
-        const detected = new Set<BlackSpot>();
-        coordinates.forEach((point: [number, number]) => {
-           blackSpots.forEach(spot => {
-             const dist = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: point[0], lon: point[1] });
-             if (dist < COLLISION_THRESHOLD) {
-               detected.add(spot);
-             }
-           });
-        });
-
-        const briefing = await getSafetyBriefing(Array.from(detected));
+        const briefing = await getSafetyBriefing(Array.from(selectedRoute.detectedSpots));
         onSafetyBriefing(briefing);
       } catch (e) {
         console.error("Safety briefing error:", e);

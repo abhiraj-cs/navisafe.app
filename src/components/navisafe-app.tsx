@@ -39,6 +39,7 @@ import {
   LogIn,
   LogOut,
   Route as RouteIcon,
+  Gauge,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -71,6 +72,12 @@ type RouteDetails = any; // Will hold the full OSRM route object
 export type TravelMode = 'car' | 'bike';
 type SpotToConfirm = BlackSpot | null;
 type StopLocation = { lat: number; lng: number; name: string };
+type NavigationData = {
+    speed: number;
+    remainingTime: number;
+    remainingDistance: number;
+    eta: Date;
+} | null;
 
 
 export default function NaviSafeApp() {
@@ -111,6 +118,7 @@ export default function NaviSafeApp() {
 
   const [rerouteInfo, setRerouteInfo] = useState<any | null>(null);
   const [showReroutePopup, setShowReroutePopup] = useState(false);
+  const [navigationData, setNavigationData] = useState<NavigationData>(null);
 
   const [isCoordAddOpen, setIsCoordAddOpen] = useState(false);
   const [coordLat, setCoordLat] = useState('');
@@ -153,6 +161,7 @@ export default function NaviSafeApp() {
     setStops([]);
     setRerouteInfo(null);
     setShowReroutePopup(false);
+    setNavigationData(null);
     setActiveRoute({ start: startValue, end: endInput });
   };
   
@@ -183,6 +192,7 @@ export default function NaviSafeApp() {
     setStops([]);
     setRerouteInfo(null);
     setShowReroutePopup(false);
+    setNavigationData(null);
     toast({
       title: 'Route Cleared',
       description: 'The planned route has been removed.',
@@ -402,6 +412,15 @@ export default function NaviSafeApp() {
     }
   };
 
+  const handleNavigationUpdate = useCallback((data: Omit<NavigationData, 'eta'> | null) => {
+    if (data) {
+        const etaDate = new Date(Date.now() + data.remainingTime * 1000);
+        setNavigationData({ ...data, eta: etaDate });
+    } else {
+        setNavigationData(null);
+    }
+  }, []);
+
   const handleAddStopConfirm = () => {
     if (!stopToAdd) return;
     setStops([...stops, stopToAdd]);
@@ -453,9 +472,16 @@ export default function NaviSafeApp() {
       safetyBriefing.toLowerCase().includes('danger'));
 
   const formatDuration = (seconds: number) => {
+    if (seconds < 0) seconds = 0;
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours > 0 ? `${hours}h ` : ''}${minutes}min`;
+    if (hours > 0) {
+        return `${hours}h ${minutes}min`;
+    }
+    if (minutes > 0) {
+        return `${minutes} min`;
+    }
+    return `<1 min`;
   };
 
   return (
@@ -958,7 +984,32 @@ export default function NaviSafeApp() {
           isAdmin={isAdmin}
           onSpotDeleteRequest={handleDeleteSpotRequest}
           onRerouteInfo={handleRerouteInfo}
+          onNavigationUpdate={handleNavigationUpdate}
         />
+        {isNavigating && navigationData && (
+            <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-[1000] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+                <CardContent className="p-3">
+                    <div className="flex justify-around items-center text-center">
+                        <div className="flex flex-col items-center gap-1 w-24">
+                           <Gauge className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                            <p className="font-bold text-2xl">{navigationData.speed.toFixed(0)}</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">km/h</p>
+                        </div>
+                        <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
+                        <div className="flex flex-col items-center gap-1 flex-1">
+                            <p className="font-bold text-lg">{formatDuration(navigationData.remainingTime)}</p>
+                            <p className="text-sm">({(navigationData.remainingDistance / 1000).toFixed(1)} km)</p>
+                        </div>
+                         <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
+                        <div className="flex flex-col items-center gap-1 w-24">
+                            <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                            <p className="font-bold text-2xl">{navigationData.eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">ETA</p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        )}
         {isAddMode && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">
             <MapPin className="mx-auto h-8 w-8 text-blue-600" />
