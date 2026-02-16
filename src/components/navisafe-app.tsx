@@ -728,8 +728,7 @@ export default function NaviSafeApp() {
 
         {/* SIDEBAR CONTROL PANEL */}
         <div className={cn(
-          "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col h-[40vh] md:h-full",
-          isNavigating && "hidden"
+          "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col h-[40vh] md:h-full"
         )}>
           {/* Header */}
           <div className="hidden md:block">
@@ -918,15 +917,35 @@ export default function NaviSafeApp() {
                         </Button>
                     </div>
 
-                     <div className="pt-4 border-t border-blue-200 dark:border-blue-800/50">
-                       <Button
-                          variant="outline"
-                          onClick={handleCancelRoute}
-                          className="w-full"
-                        >
-                          <X className="mr-2 h-4 w-4" />
-                          Clear Route
-                        </Button>
+                    <div className="pt-4 border-t border-blue-200 dark:border-blue-800/50 space-y-2">
+                      <Button
+                        onClick={handleToggleNavigation}
+                        className={cn(
+                          'w-full',
+                          isNavigating
+                            ? 'bg-red-600 hover:bg-red-700'
+                            : 'bg-green-600 hover:bg-green-700'
+                        )}
+                      >
+                        {isNavigating ? (
+                          <>
+                            <X className="mr-2 h-4 w-4" /> Stop Navigation
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="mr-2 h-4 w-4" /> Start
+                            Navigation
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleCancelRoute}
+                        className="w-full"
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Clear Route
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -968,7 +987,6 @@ export default function NaviSafeApp() {
         <div
           className={cn(
             'flex-1 relative h-[60vh] md:h-full w-full bg-slate-200',
-            isNavigating && 'fixed inset-0 z-10',
             (isAddMode || isAddingStop) ? 'cursor-crosshair' : ''
           )}
         >
@@ -1003,26 +1021,6 @@ export default function NaviSafeApp() {
             onRerouteInfo={handleRerouteInfo}
             onNavigationUpdate={handleNavigationUpdate}
           />
-
-          {isRoutePlanned && (
-             <Button
-                onClick={handleToggleNavigation}
-                className={cn(
-                    'absolute z-50 rounded-full shadow-lg transition-all duration-300',
-                    isNavigating 
-                    ? 'top-4 right-4 bg-red-600 hover:bg-red-700 h-12 w-12' 
-                    : 'bottom-4 right-4 bg-green-600 hover:bg-green-700 h-14 w-14'
-                )}
-                size="icon"
-                title={isNavigating ? 'Stop Navigation' : 'Start Navigation'}
-              >
-                {isNavigating ? (
-                  <X className="h-6 w-6" />
-                ) : (
-                  <Navigation className="h-6 w-6" />
-                )}
-              </Button>
-          )}
 
           {isNavigating && navigationData && (
               <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
