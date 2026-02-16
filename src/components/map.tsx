@@ -13,6 +13,7 @@ import { haversineDistance } from '@/lib/utils';
 import { TravelMode } from './navisafe-app';
 
 const COLLISION_THRESHOLD = 500; 
+const PROXIMITY_ALERT_THRESHOLD = 100; // meters
 
 // Helper function to create custom warning icons for black spots
 const createWarningIcon = (riskLevel: 'High' | 'Medium', reportCount: number) => {
@@ -63,6 +64,7 @@ type MapProps = {
   onSpotDeleteRequest: (spot: BlackSpot) => void;
   onRerouteInfo: (info: any | null) => void;
   onNavigationUpdate: (data: NavigationUpdateData | null) => void;
+  onProximityAlert: (spot: BlackSpot) => void;
 };
 
 const primaryRouteStyle = { color: '#3b82f6', weight: 7, opacity: 0.9 };
@@ -86,6 +88,7 @@ const MapComponent = ({
   onSpotDeleteRequest,
   onRerouteInfo,
   onNavigationUpdate,
+  onProximityAlert,
 }: MapProps) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
@@ -96,6 +99,7 @@ const MapComponent = ({
   const stopsLayer = useRef<L.LayerGroup | null>(null);
   const userLocationMarker = useRef<L.Marker | null>(null);
   const lastPassedIndex = useRef(0);
+  const alertedSpotsRef = useRef<Set<string>>(new Set());
 
   const [routes, setRoutes] = useState<any[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState<number>(0);
@@ -119,6 +123,11 @@ const MapComponent = ({
   const onNavigationUpdateRef = useRef(onNavigationUpdate);
   useEffect(() => {
     onNavigationUpdateRef.current = onNavigationUpdate;
+  });
+  
+  const onProximityAlertRef = useRef(onProximityAlert);
+  useEffect(() => {
+    onProximityAlertRef.current = onProximityAlert;
   });
 
   // Initialize map
@@ -218,23 +227,53 @@ const MapComponent = ({
     totalHaversineDistanceRef.current = totalHaversineDistance;
 
     const onNavLocationFound = (e: L.LocationEvent) => {
-        const userLocationIcon = L.divIcon({
-            html: `
-                <div class="relative flex items-center justify-center">
-                    <div class="absolute w-6 h-6 bg-blue-500 rounded-full animate-ping opacity-75"></div>
-                    <div class="relative w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-md"></div>
-                </div>
-            `,
-            className: '',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
+        const { latlng, heading, speed } = e;
+        
+        let userIcon;
+
+        if (heading !== null && !isNaN(heading) && speed && speed > 0.5) { // Only show arrow when moving
+             userIcon = L.divIcon({
+                html: `
+                    <div style="transform: rotate(${heading}deg); transform-origin: center; background: transparent; border: none;" class="transition-transform duration-500 ease-linear">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
+                           <polygon points="12 2 19 21 12 17 5 21 12 2" fill="#3b82f6" stroke="#ffffff" stroke-width="1.5" style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));"></polygon>
+                        </svg>
+                    </div>
+                `,
+                className: '',
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+            });
+        } else {
+             userIcon = L.divIcon({
+                html: `
+                    <div class="relative flex items-center justify-center">
+                        <div class="absolute w-6 h-6 bg-blue-500 rounded-full animate-ping opacity-75"></div>
+                        <div class="relative w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-md"></div>
+                    </div>
+                `,
+                className: '',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+            });
+        }
+       
+        if (userLocationMarker.current) {
+            userLocationMarker.current.setLatLng(latlng).setIcon(userIcon);
+        } else {
+            userLocationMarker.current = L.marker(latlng, { icon: userIcon }).addTo(map);
+        }
+        
+        // --- Proximity Alert Check ---
+        blackSpots.forEach(spot => {
+            const distance = haversineDistance({ lat: latlng.lat, lon: latlng.lng }, { lat: spot.lat, lon: spot.lng });
+
+            if (distance <= PROXIMITY_ALERT_THRESHOLD && !alertedSpotsRef.current.has(spot.id)) {
+                onProximityAlertRef.current(spot);
+                alertedSpotsRef.current.add(spot.id);
+            }
         });
 
-        if (userLocationMarker.current) {
-            userLocationMarker.current.setLatLng(e.latlng);
-        } else {
-            userLocationMarker.current = L.marker(e.latlng, { icon: userLocationIcon }).addTo(map);
-        }
 
         // --- Navigation Data Calculation ---
         const currentRoute = selectedRouteRef.current;
@@ -247,7 +286,6 @@ const MapComponent = ({
         const currentSpeedMs = e.speed || 0; // meters/second
         const routeCoords = currentRoute.geometry.coordinates.map((c: number[]) => ({ lat: c[1], lon: c[0] }));
 
-        // Find the closest point on the route from our last known position
         const SEARCH_WINDOW = 30;
         const searchStart = lastPassedIndex.current;
         const searchEnd = Math.min(searchStart + SEARCH_WINDOW, routeCoords.length);
@@ -268,7 +306,6 @@ const MapComponent = ({
         }
         const closestPointIndex = lastPassedIndex.current;
 
-        // Calculate remaining haversine distance
         let remainingHaversineDistance = 0;
         for (let i = closestPointIndex; i < routeCoords.length - 1; i++) {
             remainingHaversineDistance += haversineDistance(routeCoords[i], routeCoords[i+1]);
@@ -296,7 +333,8 @@ const MapComponent = ({
     };
 
     if (isNavigating) {
-        lastPassedIndex.current = 0; // Reset on navigation start
+        lastPassedIndex.current = 0;
+        alertedSpotsRef.current.clear();
         map.on('locationfound', onNavLocationFound);
         map.on('locationerror', onNavLocationError);
         map.locate({ watch: true, setView: true, maxZoom: 18, enableHighAccuracy: true });
@@ -319,7 +357,7 @@ const MapComponent = ({
         }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNavigating, onMapError, selectedRoute, totalHaversineDistance]);
+  }, [isNavigating, onMapError, selectedRoute, totalHaversineDistance, blackSpots]);
   
   // Update stop markers
   useEffect(() => {

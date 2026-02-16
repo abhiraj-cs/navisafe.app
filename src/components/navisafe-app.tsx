@@ -40,6 +40,7 @@ import {
   Route as RouteIcon,
   Gauge,
   AlertCircle,
+  XCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -127,6 +128,8 @@ export default function NaviSafeApp() {
   const [coordLat, setCoordLat] = useState('');
   const [coordLng, setCoordLng] = useState('');
 
+  const [isNavigatingFullscreen, setIsNavigatingFullscreen] = useState(false);
+
   const stopDistances = useMemo(() => {
     if (!routeDetails || !stops.length || !routeDetails.legs) return [];
     const distances: { cumulativeDistance: number }[] = [];
@@ -170,64 +173,73 @@ export default function NaviSafeApp() {
   
   const handleToggleNavigation = () => {
     if (isNavigating) {
-      // If currently navigating, just stop it.
       setIsNavigating(false);
+      setIsNavigatingFullscreen(false);
       toast({
         title: 'Navigation Stopped',
       });
       return;
     }
 
-    // If starting navigation, check for geolocation support and permissions.
     if (!navigator.geolocation) {
       setShowGeoLocationWarning(true);
       return;
     }
 
     const startNavigationProcess = () => {
-      // This will trigger the permission prompt if needed, or get the location if granted.
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // Success! We have location, we can start navigation.
           setPanToStart(true);
           setTimeout(() => setPanToStart(false), 500);
           setIsNavigating(true);
+          setIsNavigatingFullscreen(true);
           toast({
             title: 'Navigation Started',
-            description: 'Tracking your location.',
+            description: 'Tracking your location in full-screen mode.',
           });
         },
         (error) => {
-          // An error occurred. It could be a timeout or permission denied.
-          // In either case, we show the same warning.
           setShowGeoLocationWarning(true);
           console.error(`Geolocation error: ${error.message} (Code: ${error.code})`);
         },
-        // Use more lenient options, especially for the first GPS fix on mobile.
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
       );
     };
 
-    // Use the Permissions API for a more reliable check before trying to get the position.
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
         if (permissionStatus.state === 'granted' || permissionStatus.state === 'prompt') {
-          // If we have permission or the browser is going to prompt, we can proceed.
           startNavigationProcess();
         } else if (permissionStatus.state === 'denied') {
-          // If permission is explicitly denied, just show the warning.
           setShowGeoLocationWarning(true);
         }
       }).catch((err) => {
-        // If the Permissions API itself fails, fall back to just trying to get the position.
         console.error("Permissions API query failed, falling back.", err);
         startNavigationProcess();
       });
     } else {
-      // Fallback for older browsers that don't support the Permissions API.
       startNavigationProcess();
     }
   };
+
+  const handleExitNavigation = () => {
+    setIsNavigating(false);
+    setIsNavigatingFullscreen(false);
+    setNavigationData(null);
+    toast({
+      title: 'Navigation Stopped',
+      description: 'You have exited the navigation mode.',
+    });
+  };
+
+  const handleProximityAlert = useCallback((spot: BlackSpot) => {
+    toast({
+      variant: 'destructive',
+      title: `⚠️ Approaching ${spot.risk_level} Risk Zone`,
+      description: spot.accident_history,
+      duration: 5000,
+    });
+  }, [toast]);
   
   const handleCancelRoute = () => {
     setActiveRoute({ start: '', end: '' });
@@ -235,6 +247,7 @@ export default function NaviSafeApp() {
     setEndInput('');
     setIsRoutePlanned(false);
     setIsNavigating(false);
+    setIsNavigatingFullscreen(false);
     setSafetyBriefing(null);
     setRouteDetails(null);
     setStops([]);
@@ -256,7 +269,6 @@ export default function NaviSafeApp() {
     });
 
     try {
-      // 1. Snap to nearest road using OSRM
       const osrmUrl = `https://router.project-osrm.org/nearest/v1/driving/${latlng.lng},${latlng.lat}`;
       const osrmRes = await fetch(osrmUrl);
       const osrmJson = await osrmRes.json();
@@ -269,17 +281,14 @@ export default function NaviSafeApp() {
       const snappedLat = snappedCoords[1];
       const snappedLng = snappedCoords[0];
 
-      // 2. Check for nearby existing black spots
       const nearbySpot = blackSpots?.find(spot => {
         const distance = haversineDistance({ lat: spot.lat, lon: spot.lng }, { lat: snappedLat, lon: snappedLng });
         return distance < NEARBY_THRESHOLD;
       });
 
       if (nearbySpot) {
-        // 3a. If nearby spot found, ask for confirmation to increment
         setSpotToConfirm(nearbySpot);
       } else {
-        // 3b. If no nearby spot, open the 'add new' dialog
         setNewSpotInfo({ lat: snappedLat, lng: snappedLng });
       }
 
@@ -315,7 +324,7 @@ export default function NaviSafeApp() {
 
     processNewSpotAddition({ lat, lng });
 
-    setIsCoordAddOpen(false); // Close the dialog
+    setIsCoordAddOpen(false);
   };
 
   const handleLocateUser = () => {
@@ -533,6 +542,36 @@ export default function NaviSafeApp() {
     </div>
   );
 
+  const mapProps = {
+    startLocation: activeRoute.start,
+    endLocation: activeRoute.end,
+    stops: stops,
+    blackSpots: blackSpots || [],
+    travelMode: travelMode,
+    onMapClick: handleMapClick,
+    onSafetyBriefing: setSafetyBriefing,
+    onRouteDetails: handleRouteDetails,
+    onMapError: (message: string) => {
+      if (message) {
+        toast({
+          variant: 'destructive',
+          title: 'Route Error',
+          description: message,
+        });
+      }
+      setIsRoutePlanned(false);
+    },
+    onLoading: setIsSearching,
+    locateUser: locateUser,
+    panToStart: panToStart,
+    isNavigating: isNavigating,
+    isAdmin: isAdmin,
+    onSpotDeleteRequest: handleDeleteSpotRequest,
+    onRerouteInfo: handleRerouteInfo,
+    onNavigationUpdate: handleNavigationUpdate,
+    onProximityAlert: handleProximityAlert,
+  };
+
   return (
     <div className="h-screen w-screen bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans">
       <AlertDialog
@@ -742,20 +781,55 @@ export default function NaviSafeApp() {
       </AlertDialog>
 
       {/* Main Layout Container */}
+      {isNavigatingFullscreen ? (
+        <div className="h-full w-full relative">
+          <MapComponent {...mapProps} />
+          <Button
+            variant="destructive"
+            size="lg"
+            className="absolute top-4 right-4 z-50 h-12 w-12 rounded-full p-0 shadow-lg"
+            onClick={handleExitNavigation}
+          >
+            <XCircle className="h-8 w-8" />
+            <span className="sr-only">Exit Navigation</span>
+          </Button>
+
+          {navigationData && (
+              <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+                  <CardContent className="p-3">
+                      <div className="flex justify-around items-center text-center">
+                          <div className="flex flex-col items-center gap-1 w-24">
+                             <Gauge className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                              <p className="font-bold text-2xl">{navigationData.speed.toFixed(0)}</p>
+                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">km/h</p>
+                          </div>
+                          <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
+                          <div className="flex flex-col items-center gap-1 flex-1">
+                              <p className="font-bold text-lg">{formatDuration(navigationData.remainingTime)}</p>
+                              <p className="text-sm">({(navigationData.remainingDistance / 1000).toFixed(1)} km)</p>
+                          </div>
+                           <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
+                          <div className="flex flex-col items-center gap-1 w-24">
+                              <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                              <p className="font-bold text-2xl">{navigationData.eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">ETA</p>
+                          </div>
+                      </div>
+                  </CardContent>
+              </Card>
+          )}
+        </div>
+      ) : (
       <div className="flex h-full w-full flex-col md:flex-row">
-        {/* SIDEBAR CONTROL PANEL */}
         <div className={cn(
           "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-t md:border-t-0 md:border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col order-last md:order-first",
            "h-auto max-h-[50vh] md:h-full md:max-h-none"
         )}>
-          {/* Header */}
           <div className="hidden md:block">
             <HeaderContent />
           </div>
 
-          {/* Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            {/* Search Form */}
             <Card className="border-slate-200 dark:border-slate-800 shadow-sm bg-transparent">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Plan a Route</CardTitle>
@@ -878,7 +952,6 @@ export default function NaviSafeApp() {
                 </CardContent>
               </Card>
             
-            {/* Route Details & Start Button */}
             {isRoutePlanned && !isSearching && (
                <Card className="border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/20 animate-in fade-in duration-500">
                   <CardHeader>
@@ -976,7 +1049,6 @@ export default function NaviSafeApp() {
                 </Card>
             )}
 
-            {/* Safety Briefing Result */}
             {safetyBriefing && !isSearching && (
               <div className="animate-in slide-in-from-bottom-2 fade-in duration-500">
                 <Alert
@@ -1002,13 +1074,11 @@ export default function NaviSafeApp() {
             )}
           </div>
 
-          {/* Footer */}
           <div className="p-4 border-t text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-950/50 dark:border-slate-800">
             Powered By Group 2 S6C
           </div>
         </div>
         
-        {/* MAP AREA */}
         <div
           className={cn(
             'flex-1 relative w-full bg-slate-200',
@@ -1018,59 +1088,8 @@ export default function NaviSafeApp() {
            <div className="absolute top-0 left-0 right-0 z-10 md:hidden">
             <HeaderContent />
           </div>
-          <MapComponent
-            startLocation={activeRoute.start}
-            endLocation={activeRoute.end}
-            stops={stops}
-            blackSpots={blackSpots || []}
-            travelMode={travelMode}
-            onMapClick={handleMapClick}
-            onSafetyBriefing={setSafetyBriefing}
-            onRouteDetails={handleRouteDetails}
-            onMapError={message => {
-              if (message) {
-                toast({
-                  variant: 'destructive',
-                  title: 'Route Error',
-                  description: message,
-                });
-              }
-              setIsRoutePlanned(false);
-            }}
-            onLoading={setIsSearching}
-            locateUser={locateUser}
-            panToStart={panToStart}
-            isNavigating={isNavigating}
-            isAdmin={isAdmin}
-            onSpotDeleteRequest={handleDeleteSpotRequest}
-            onRerouteInfo={handleRerouteInfo}
-            onNavigationUpdate={handleNavigationUpdate}
-          />
+          <MapComponent {...mapProps} />
 
-          {isNavigating && navigationData && (
-              <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
-                  <CardContent className="p-3">
-                      <div className="flex justify-around items-center text-center">
-                          <div className="flex flex-col items-center gap-1 w-24">
-                             <Gauge className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                              <p className="font-bold text-2xl">{navigationData.speed.toFixed(0)}</p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">km/h</p>
-                          </div>
-                          <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
-                          <div className="flex flex-col items-center gap-1 flex-1">
-                              <p className="font-bold text-lg">{formatDuration(navigationData.remainingTime)}</p>
-                              <p className="text-sm">({(navigationData.remainingDistance / 1000).toFixed(1)} km)</p>
-                          </div>
-                           <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
-                          <div className="flex flex-col items-center gap-1 w-24">
-                              <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                              <p className="font-bold text-2xl">{navigationData.eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">ETA</p>
-                          </div>
-                      </div>
-                  </CardContent>
-              </Card>
-          )}
           {isAddMode && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">
               <MapPin className="mx-auto h-8 w-8 text-blue-600" />
@@ -1081,6 +1100,7 @@ export default function NaviSafeApp() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
