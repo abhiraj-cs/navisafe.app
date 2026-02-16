@@ -718,10 +718,11 @@ export default function NaviSafeApp() {
       </AlertDialog>
 
       {/* Main Layout Container */}
-      <div className="flex h-full w-full flex-col-reverse md:flex-row">
+      <div className="flex h-full w-full flex-col md:flex-row">
         {/* SIDEBAR CONTROL PANEL */}
         <div className={cn(
-          "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-t md:border-t-0 md:border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col md:h-full"
+          "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-t md:border-t-0 md:border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col order-last md:order-first",
+           "h-auto max-h-[50vh] md:h-full md:max-h-none"
         )}>
           {/* Header */}
           <div className="hidden md:block">
@@ -986,7 +987,7 @@ export default function NaviSafeApp() {
         {/* MAP AREA */}
         <div
           className={cn(
-            'flex-1 relative h-full w-full bg-slate-200',
+            'flex-1 relative w-full bg-slate-200',
             (isAddMode) ? 'cursor-crosshair' : ''
           )}
         >
