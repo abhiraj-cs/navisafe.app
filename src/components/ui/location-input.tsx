@@ -21,30 +21,33 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const providerRef = useRef<OpenStreetMapProvider | null>(null);
+  const [provider, setProvider] = useState<OpenStreetMapProvider | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
   const debouncedValue = useDebounce(value, 300);
 
   useEffect(() => {
-    const initializeProvider = async () => {
-        if (!providerRef.current) {
-            const { OpenStreetMapProvider: Provider } = await import('leaflet-geosearch');
-            providerRef.current = new Provider();
-        }
-    };
-    initializeProvider();
+    // Dynamically import and initialize the provider on the client side
+    import('leaflet-geosearch').then(module => {
+        setProvider(new module.OpenStreetMapProvider());
+    });
   }, []);
 
   useEffect(() => {
-    if (debouncedValue.trim().length > 2 && showSuggestions && providerRef.current) {
+    // We now have `provider` as a dependency, so this effect will run when it's initialized.
+    if (debouncedValue.trim().length > 2 && showSuggestions && provider) {
       const fetchSuggestions = async () => {
         setIsLoading(true);
         try {
-          const results = await providerRef.current!.search({ query: debouncedValue });
+          const results = await provider.search({ query: debouncedValue });
           setSuggestions(results);
         } catch (error) {
-          console.error("Failed to fetch location suggestions", error);
+          // Check if the error is a TypeError, which can indicate a network issue.
+          if (error instanceof TypeError && error.message === 'Failed to fetch') {
+             console.error("Location search failed. Please check your network connection.", error);
+          } else {
+             console.error("Failed to fetch location suggestions", error);
+          }
           setSuggestions([]);
         } finally {
           setIsLoading(false);
@@ -54,15 +57,16 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
     } else {
       setSuggestions([]);
     }
-  }, [debouncedValue, showSuggestions]);
+  }, [debouncedValue, showSuggestions, provider]); // Added `provider` to dependency array
 
   const handleSelect = (suggestion: SearchResult) => {
-    onValueChange(suggestion.label);
-    if (onLocationSelect) {
-      onLocationSelect(suggestion);
-    }
     setShowSuggestions(false);
     inputRef.current?.blur();
+    if (onLocationSelect) {
+      onLocationSelect(suggestion);
+    } else {
+      onValueChange(suggestion.label);
+    }
   };
 
   return (
