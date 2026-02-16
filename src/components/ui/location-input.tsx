@@ -22,6 +22,7 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
   const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [provider, setProvider] = useState<OpenStreetMapProvider | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null); // New state for errors
   const inputRef = useRef<HTMLInputElement>(null);
   
   const debouncedValue = useDebounce(value, 300);
@@ -38,17 +39,20 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
     if (debouncedValue.trim().length > 2 && showSuggestions && provider) {
       const fetchSuggestions = async () => {
         setIsLoading(true);
+        setSearchError(null); // Reset error state on new search
         try {
           const results = await provider.search({ query: debouncedValue });
           setSuggestions(results);
         } catch (error) {
+          setSuggestions([]); // Clear suggestions on error
           // Check if the error is a TypeError, which can indicate a network issue.
           if (error instanceof TypeError && error.message === 'Failed to fetch') {
              console.error("Location search failed. Please check your network connection.", error);
+             setSearchError("Search failed. Check network connection.");
           } else {
              console.error("Failed to fetch location suggestions", error);
+             setSearchError("An error occurred while searching.");
           }
-          setSuggestions([]);
         } finally {
           setIsLoading(false);
         }
@@ -56,8 +60,9 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
       fetchSuggestions();
     } else {
       setSuggestions([]);
+      setSearchError(null); // Clear error when not searching
     }
-  }, [debouncedValue, showSuggestions, provider]); // Added `provider` to dependency array
+  }, [debouncedValue, showSuggestions, provider]);
 
   const handleSelect = (suggestion: SearchResult) => {
     setShowSuggestions(false);
@@ -89,7 +94,12 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
       {showSuggestions && debouncedValue.trim().length > 2 && (
         <div className="absolute top-full mt-2 w-full z-30 bg-card border border-border rounded-md shadow-lg animate-in fade-in-0 duration-200">
           {isLoading && <div className="p-3 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Searching...</div>}
-          {!isLoading && suggestions.length > 0 && (
+          
+          {!isLoading && searchError && (
+             <div className="p-3 text-sm text-destructive">{searchError}</div>
+          )}
+
+          {!isLoading && !searchError && suggestions.length > 0 && (
             <ul className="max-h-60 overflow-y-auto">
               {suggestions.map((suggestion, index) => (
                 <li key={suggestion.raw.place_id || index}>
@@ -107,7 +117,7 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
               ))}
             </ul>
           )}
-           {!isLoading && suggestions.length === 0 && debouncedValue.length > 2 && (
+           {!isLoading && !searchError && suggestions.length === 0 && debouncedValue.length > 2 && (
             <div className="p-3 text-sm text-muted-foreground">No results found.</div>
            )}
         </div>
