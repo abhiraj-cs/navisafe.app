@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LocationInput } from '@/components/ui/location-input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -55,6 +54,7 @@ import { useAuth } from '@/context/auth-context';
 import Link from 'next/link';
 import { Input } from './ui/input';
 import type { SearchResult } from 'leaflet-geosearch';
+import { LocationInput } from '@/components/ui/location-input';
 
 // Dynamically import the map to ensure it's client-side only
 const MapComponent = dynamic(() => import('@/components/map'), {
@@ -718,83 +718,10 @@ export default function NaviSafeApp() {
       </AlertDialog>
 
       {/* Main Layout Container */}
-      <div className="flex h-full w-full flex-col md:flex-row">
-        {/* MAP AREA - Comes first in DOM for mobile view (flex-col-reverse) */}
-        <div
-          className={cn(
-            'flex-1 relative h-full w-full bg-slate-200',
-            (isAddMode) ? 'cursor-crosshair' : ''
-          )}
-        >
-           <div className="absolute top-0 left-0 right-0 z-10 md:hidden">
-            <HeaderContent />
-          </div>
-          <MapComponent
-            startLocation={activeRoute.start}
-            endLocation={activeRoute.end}
-            stops={stops}
-            blackSpots={blackSpots || []}
-            travelMode={travelMode}
-            onMapClick={handleMapClick}
-            onSafetyBriefing={setSafetyBriefing}
-            onRouteDetails={handleRouteDetails}
-            onMapError={message => {
-              if (message) {
-                toast({
-                  variant: 'destructive',
-                  title: 'Route Error',
-                  description: message,
-                });
-              }
-              setIsRoutePlanned(false);
-            }}
-            onLoading={setIsSearching}
-            locateUser={locateUser}
-            panToStart={panToStart}
-            isNavigating={isNavigating}
-            isAdmin={isAdmin}
-            onSpotDeleteRequest={handleDeleteSpotRequest}
-            onRerouteInfo={handleRerouteInfo}
-            onNavigationUpdate={handleNavigationUpdate}
-          />
-
-          {isNavigating && navigationData && (
-              <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
-                  <CardContent className="p-3">
-                      <div className="flex justify-around items-center text-center">
-                          <div className="flex flex-col items-center gap-1 w-24">
-                             <Gauge className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                              <p className="font-bold text-2xl">{navigationData.speed.toFixed(0)}</p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">km/h</p>
-                          </div>
-                          <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
-                          <div className="flex flex-col items-center gap-1 flex-1">
-                              <p className="font-bold text-lg">{formatDuration(navigationData.remainingTime)}</p>
-                              <p className="text-sm">({(navigationData.remainingDistance / 1000).toFixed(1)} km)</p>
-                          </div>
-                           <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
-                          <div className="flex flex-col items-center gap-1 w-24">
-                              <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                              <p className="font-bold text-2xl">{navigationData.eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">ETA</p>
-                          </div>
-                      </div>
-                  </CardContent>
-              </Card>
-          )}
-          {isAddMode && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">
-              <MapPin className="mx-auto h-8 w-8 text-blue-600" />
-              <p className="font-bold text-slate-800 dark:text-slate-200">
-                Click to place a new black spot
-              </p>
-            </div>
-          )}
-        </div>
-
+      <div className="flex h-full w-full flex-col-reverse md:flex-row">
         {/* SIDEBAR CONTROL PANEL */}
         <div className={cn(
-          "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col md:h-full"
+          "w-full md:w-[400px] flex-shrink-0 bg-white dark:bg-slate-950 border-t md:border-t-0 md:border-r border-slate-200 dark:border-slate-800 z-20 shadow-xl flex flex-col md:h-full"
         )}>
           {/* Header */}
           <div className="hidden md:block">
@@ -1054,6 +981,79 @@ export default function NaviSafeApp() {
           <div className="p-4 border-t text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-950/50 dark:border-slate-800">
             Powered By Group 2 S6C
           </div>
+        </div>
+        
+        {/* MAP AREA */}
+        <div
+          className={cn(
+            'flex-1 relative h-full w-full bg-slate-200',
+            (isAddMode) ? 'cursor-crosshair' : ''
+          )}
+        >
+           <div className="absolute top-0 left-0 right-0 z-10 md:hidden">
+            <HeaderContent />
+          </div>
+          <MapComponent
+            startLocation={activeRoute.start}
+            endLocation={activeRoute.end}
+            stops={stops}
+            blackSpots={blackSpots || []}
+            travelMode={travelMode}
+            onMapClick={handleMapClick}
+            onSafetyBriefing={setSafetyBriefing}
+            onRouteDetails={handleRouteDetails}
+            onMapError={message => {
+              if (message) {
+                toast({
+                  variant: 'destructive',
+                  title: 'Route Error',
+                  description: message,
+                });
+              }
+              setIsRoutePlanned(false);
+            }}
+            onLoading={setIsSearching}
+            locateUser={locateUser}
+            panToStart={panToStart}
+            isNavigating={isNavigating}
+            isAdmin={isAdmin}
+            onSpotDeleteRequest={handleDeleteSpotRequest}
+            onRerouteInfo={handleRerouteInfo}
+            onNavigationUpdate={handleNavigationUpdate}
+          />
+
+          {isNavigating && navigationData && (
+              <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-md z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+                  <CardContent className="p-3">
+                      <div className="flex justify-around items-center text-center">
+                          <div className="flex flex-col items-center gap-1 w-24">
+                             <Gauge className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                              <p className="font-bold text-2xl">{navigationData.speed.toFixed(0)}</p>
+                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">km/h</p>
+                          </div>
+                          <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
+                          <div className="flex flex-col items-center gap-1 flex-1">
+                              <p className="font-bold text-lg">{formatDuration(navigationData.remainingTime)}</p>
+                              <p className="text-sm">({(navigationData.remainingDistance / 1000).toFixed(1)} km)</p>
+                          </div>
+                           <div className="h-16 w-px bg-slate-300 dark:bg-slate-700"></div>
+                          <div className="flex flex-col items-center gap-1 w-24">
+                              <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                              <p className="font-bold text-2xl">{navigationData.eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">ETA</p>
+                          </div>
+                      </div>
+                  </CardContent>
+              </Card>
+          )}
+          {isAddMode && (
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 p-4 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-2xl pointer-events-none text-center">
+              <MapPin className="mx-auto h-8 w-8 text-blue-600" />
+              <p className="font-bold text-slate-800 dark:text-slate-200">
+                Click to place a new black spot
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
