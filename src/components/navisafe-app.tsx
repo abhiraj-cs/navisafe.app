@@ -184,25 +184,49 @@ export default function NaviSafeApp() {
       return;
     }
 
-    // Try to get current position. This will prompt for permission if needed.
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        // Success! We have location, we can start navigation.
-        setPanToStart(true);
-        setTimeout(() => setPanToStart(false), 500);
-        setIsNavigating(true);
-        toast({
-          title: 'Navigation Started',
-          description: 'Tracking your location.',
-        });
-      },
-      (error) => {
-        // An error occurred. Most likely permission denied.
-        setShowGeoLocationWarning(true);
-      },
-      // Options to match navigation settings
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+    const startNavigationProcess = () => {
+      // This will trigger the permission prompt if needed, or get the location if granted.
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          // Success! We have location, we can start navigation.
+          setPanToStart(true);
+          setTimeout(() => setPanToStart(false), 500);
+          setIsNavigating(true);
+          toast({
+            title: 'Navigation Started',
+            description: 'Tracking your location.',
+          });
+        },
+        (error) => {
+          // An error occurred. It could be a timeout or permission denied.
+          // In either case, we show the same warning.
+          setShowGeoLocationWarning(true);
+          console.error(`Geolocation error: ${error.message} (Code: ${error.code})`);
+        },
+        // Use more lenient options, especially for the first GPS fix on mobile.
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      );
+    };
+
+    // Use the Permissions API for a more reliable check before trying to get the position.
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
+        if (permissionStatus.state === 'granted' || permissionStatus.state === 'prompt') {
+          // If we have permission or the browser is going to prompt, we can proceed.
+          startNavigationProcess();
+        } else if (permissionStatus.state === 'denied') {
+          // If permission is explicitly denied, just show the warning.
+          setShowGeoLocationWarning(true);
+        }
+      }).catch((err) => {
+        // If the Permissions API itself fails, fall back to just trying to get the position.
+        console.error("Permissions API query failed, falling back.", err);
+        startNavigationProcess();
+      });
+    } else {
+      // Fallback for older browsers that don't support the Permissions API.
+      startNavigationProcess();
+    }
   };
   
   const handleCancelRoute = () => {
