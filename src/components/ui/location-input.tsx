@@ -14,9 +14,10 @@ type LocationInputProps = {
   disabled?: boolean;
   className?: string;
   icon: React.ReactNode;
+  onLocationSelect?: (selection: SearchResult) => void;
 };
 
-export function LocationInput({ value, onValueChange, placeholder, disabled, className, icon }: LocationInputProps) {
+export function LocationInput({ value, onValueChange, placeholder, disabled, className, icon, onLocationSelect }: LocationInputProps) {
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -57,6 +58,9 @@ export function LocationInput({ value, onValueChange, placeholder, disabled, cla
 
   const handleSelect = (suggestion: SearchResult) => {
     onValueChange(suggestion.label);
+    if (onLocationSelect) {
+      onLocationSelect(suggestion);
+    }
     setShowSuggestions(false);
     inputRef.current?.blur();
   };

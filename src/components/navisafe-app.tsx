@@ -53,6 +53,7 @@ import { haversineDistance, cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import Link from 'next/link';
 import { Input } from './ui/input';
+import type { SearchResult } from 'leaflet-geosearch';
 
 // Dynamically import the map to ensure it's client-side only
 const MapComponent = dynamic(() => import('@/components/map'), {
@@ -96,7 +97,7 @@ export default function NaviSafeApp() {
   const [activeRoute, setActiveRoute] = useState<{ start: string | { lat: number, lng: number }, end: string }>({ start: '', end: '' });
   const [isRoutePlanned, setIsRoutePlanned] = useState(false);
   const [stops, setStops] = useState<StopLocation[]>([]);
-  const [stopToAdd, setStopToAdd] = useState<StopLocation | null>(null);
+  const [stopInput, setStopInput] = useState('');
 
   const [safetyBriefing, setSafetyBriefing] = useState<string | null>(null);
   const [routeDetails, setRouteDetails] = useState<RouteDetails>(null);
@@ -105,7 +106,6 @@ export default function NaviSafeApp() {
   const { toast } = useToast();
 
   const [isAddMode, setIsAddMode] = useState(false);
-  const [isAddingStop, setIsAddingStop] = useState(false);
   const [newSpotInfo, setNewSpotInfo] = useState<NewSpotInfo>(null);
   const [spotToConfirm, setSpotToConfirm] = useState<SpotToConfirm>(null);
   const [isProcessingSpot, setIsProcessingSpot] = useState(false);
@@ -250,26 +250,6 @@ export default function NaviSafeApp() {
   const handleMapClick = async (latlng: { lat: number; lng: number }) => {
     if (isAddMode) {
       processNewSpotAddition(latlng);
-    } else if (isAddingStop) {
-        setIsAddingStop(false); // Turn off mode after one click
-        toast({
-            title: 'Finding location...',
-            description: 'Getting details for the selected stop.',
-        });
-        try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
-            const data = await response.json();
-            const name = data.display_name || `Stop at ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
-            setStopToAdd({ lat: latlng.lat, lng: latlng.lng, name });
-        } catch (error) {
-            toast({
-                variant: 'destructive',
-                title: 'Could not get location name',
-                description: 'Using coordinates as the name.',
-            });
-            const name = `Stop at ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
-            setStopToAdd({ lat: latlng.lat, lng: latlng.lng, name });
-        }
     }
   };
   
@@ -423,16 +403,6 @@ export default function NaviSafeApp() {
     }
   }, []);
 
-  const handleAddStopConfirm = () => {
-    if (!stopToAdd) return;
-    setStops([...stops, stopToAdd]);
-    toast({
-      title: 'Stop Added',
-      description: 'Route updated. Alternative routes are now disabled.',
-    });
-    setStopToAdd(null);
-  };
-
   const handleRemoveStop = (indexToRemove: number) => {
     setStops(stops.filter((_, index) => index !== indexToRemove));
     toast({
@@ -542,27 +512,6 @@ export default function NaviSafeApp() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={!!stopToAdd}
-        onOpenChange={() => setStopToAdd(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add Stop</AlertDialogTitle>
-            <AlertDialogDescription>
-              Do you want to add this location as a stop to your route? Adding a stop will disable alternative routes.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="font-medium text-foreground -mt-2 mb-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-md text-sm">
-            {stopToAdd?.name}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleAddStopConfirm}>Add Stop</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      
       <AlertDialog
         open={!!newSpotInfo}
         onOpenChange={() => setNewSpotInfo(null)}
@@ -906,22 +855,31 @@ export default function NaviSafeApp() {
                           ))}
                           </div>
                         )}
-                        <Button
-                          variant="outline"
-                          onClick={() => setIsAddingStop(prev => !prev)}
-                          className="w-full"
-                          disabled={isAddingStop}
-                        >
-                          <PlusCircle className="mr-2 h-4 w-4" />
-                          Add Stop on Map
-                        </Button>
+                        <LocationInput
+                          icon={<PlusCircle className="h-4 w-4" />}
+                          placeholder="Search to add a stop..."
+                          value={stopInput}
+                          onValueChange={setStopInput}
+                          onLocationSelect={(location: SearchResult) => {
+                              const newStop: StopLocation = {
+                                  lat: location.y,
+                                  lng: location.x,
+                                  name: location.label,
+                              };
+                              setStops([...stops, newStop]);
+                              setStopInput(''); // Clear the input
+                              toast({
+                                  title: 'Stop Added',
+                                  description: `Route updated.`,
+                              });
+                          }}
+                        />
                     </div>
 
-                    <div className="pt-4 border-t border-blue-200 dark:border-blue-800/50 space-y-2">
+                    <div className="grid grid-cols-2 gap-2 pt-4 border-t border-blue-200 dark:border-blue-800/50">
                       <Button
                         onClick={handleToggleNavigation}
                         className={cn(
-                          'w-full',
                           isNavigating
                             ? 'bg-red-600 hover:bg-red-700'
                             : 'bg-green-600 hover:bg-green-700'
@@ -929,22 +887,20 @@ export default function NaviSafeApp() {
                       >
                         {isNavigating ? (
                           <>
-                            <X className="mr-2 h-4 w-4" /> Stop Navigation
+                            <X className="mr-2 h-4 w-4" /> Stop
                           </>
                         ) : (
                           <>
                             <Navigation className="mr-2 h-4 w-4" /> Start
-                            Navigation
                           </>
                         )}
                       </Button>
                       <Button
                         variant="outline"
                         onClick={handleCancelRoute}
-                        className="w-full"
                       >
                         <X className="mr-2 h-4 w-4" />
-                        Clear Route
+                        Clear
                       </Button>
                     </div>
                   </CardContent>
@@ -987,7 +943,7 @@ export default function NaviSafeApp() {
         <div
           className={cn(
             'flex-1 relative h-[60vh] md:h-full w-full bg-slate-200',
-            (isAddMode || isAddingStop) ? 'cursor-crosshair' : ''
+            (isAddMode) ? 'cursor-crosshair' : ''
           )}
         >
           <div className={cn("absolute top-0 left-0 right-0 z-10 md:hidden", isNavigating && "hidden")}>
@@ -1051,13 +1007,6 @@ export default function NaviSafeApp() {
               <MapPin className="mx-auto h-8 w-8 text-blue-600" />
               <p className="font-bold text-slate-800 dark:text-slate-200">
                 Click to place a new black spot
-              </p>
-            </div>
-          )}
-           {isAddingStop && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 p-2 bg-white/90 dark:bg-slate-800/90 rounded-lg shadow-lg pointer-events-none text-center">
-              <p className="font-medium text-slate-800 dark:text-slate-200 text-sm">
-                Click on the map to add a stop
               </p>
             </div>
           )}
